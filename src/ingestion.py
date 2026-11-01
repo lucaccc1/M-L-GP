@@ -1,12 +1,16 @@
+import os
 import requests
 import pandas as pd
 
 base_url = "https://api.motogp.pulselive.com/motogp/v1"
+all_events = []
+all_sessions = []
+all_results = []
 
 def my_request(url, endpoint="", params=None):
     try:
-        response = requests.get(f"{url}/{endpoint}", params=params, timeout=15)  # im just sending a get request to the url
-        response.raise_for_status()  # this will raise an error if the request was unsuccessful
+        response = requests.get(f"{url}/{endpoint}", params=params, timeout=15)  
+        response.raise_for_status()  
         data = response.json()
         return data
     except requests.exceptions.HTTPError as e:
@@ -37,29 +41,41 @@ if __name__ == "__main__":
     seasons = get_seasons()
     if seasons:
         print("seasons retrieved successfully")
-        df_seasons = pd.DataFrame(seasons)
-        print(df_seasons)
-        events = get_events(seasons[0]['id'])
-        if events:
-            print("events retrieved successfully")
-            df_events = pd.DataFrame(events)
-            print(df_events)
-            categories = get_categories(events[0]['id'])
-            if categories:
-                print("categories retrieved successfully")
-                df_categories = pd.DataFrame(categories)
-                print(df_categories)
-                sessions = get_session(events[0]['id'], categories[0]['id'])
-                if sessions:
-                    print("sessions retrieved successfully")
-                    df_sessions = pd.DataFrame(sessions)
-                    print(df_sessions)
-                    race = next((s for s in sessions if s["type"] == "RAC"), None)
-                    if race:
-                        session_results = get_session_results(race["id"])
-                        if session_results:
-                            print("session results retrieved successfully")
-                            df_session_results = pd.json_normalize(session_results["classification"])
-                            print(df_session_results)
-                    else:
-                        print("no race session found for this event")
+        for season in seasons:
+            season_id = season['id']
+            season_year = season['year']
+            events = get_events(season_id)
+            if not events:
+                continue
+            for event in events:
+                event_id = event['id']
+                all_events.append(event)
+                categories = get_categories(event_id)
+                if not categories:
+                    continue
+                for category in categories:
+                    if "MotoGP" not in category.get("name", ""):
+                        continue
+                    category_id = category['id']
+                    sessions = get_session(event_id, category_id)
+                    if not sessions:
+                        continue
+                    for session in sessions:
+                        session_id = session['id']
+                        all_sessions.append(session)
+                        session_results = get_session_results(session_id)
+                        if not session_results:
+                            continue
+                        classification = session_results.get("classification", [])
+                        for result in classification:
+                            result['season_year'] = season_year
+                            result['event_id'] = event_id
+                            result['session_id'] = session_id
+                            all_results.append(result)
+
+        os.makedirs("data/raw", exist_ok=True)
+        pd.DataFrame(seasons).to_csv("data/raw/seasons.csv", index=False)
+        pd.DataFrame(all_events).to_csv("data/raw/events.csv", index=False)
+        pd.DataFrame(all_sessions).to_csv("data/raw/sessions.csv", index=False)
+        pd.json_normalize(all_results).to_csv("data/raw/results.csv", index=False)
+        print("download completed and files saved in data/raw/")

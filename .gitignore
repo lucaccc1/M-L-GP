@@ -2,6 +2,7 @@ venv/
 .venv/
 __pycache__/
 *.py[cod]
+.ingestion_test.py
 
 data/raw/
 data/processed/
