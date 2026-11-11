@@ -39,10 +39,21 @@ def starting_grid(df):
     races_with_grid['grid_position'] = races_with_grid['grid_position'].fillna(22).astype(int)
     return races_with_grid
 
+def parse_time(time_str):
+    if pd.isna(time_str) or not isinstance(time_str, str):
+        return np.nan
+    if ':' in time_str:
+        minutes, seconds = time_str.split(':')
+        total_seconds = float(minutes) * 60 + float(seconds)
+    else:
+        total_seconds = float(time_str)
+    return total_seconds
+
 if __name__ == "__main__":
     results, sessions = load_data()
     filtered_sessions = filter_sessions_year(results, sessions)
     cleaned_sessions = clean_columns(filtered_sessions)
     final_races_df = starting_grid(cleaned_sessions)
+    final_races_df['time_seconds'] = final_races_df['time'].apply(parse_time)
     os.makedirs("data/processed", exist_ok=True)
     final_races_df.to_csv("data/processed/cleaned_sessions.csv", index=False)
