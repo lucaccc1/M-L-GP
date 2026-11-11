@@ -1,0 +1,1 @@
+# i want to create a function that runs ingestion.py and then clean the data with preprocessing.py every time there is a new race
