@@ -9,3 +9,7 @@ if __name__ == "__main__":
     subprocess.run([sys.executable, "src/preprocessing.py"], check=True)
     print("3. features...")
     subprocess.run([sys.executable, "src/features.py"], check=True)
+
+    if "--retrain" in sys.argv:
+        print("4. training...")
+        subprocess.run([sys.executable, "src/train.py"], check=True)
