@@ -4,7 +4,7 @@ import os
 
 def load_data():
     results = pd.read_csv("data/raw/results.csv", low_memory=False)
-    sessions = pd.read_csv("data/raw/sessions.csv", low_memory=False)
+    sessions = pd.read_csv("data/raw/sessions.csv", low_memory=False).drop_duplicates(subset=["id"], keep="last")
     return results, sessions
 
 def filter_sessions_year(results, sessions, start_year=2016):
@@ -14,13 +14,7 @@ def filter_sessions_year(results, sessions, start_year=2016):
     return df_filtered
 
 def clean_columns(df):
-    df_cleaned = df.rename(columns={
-        'type': 'session_type',
-        'rider.id':'rider_id',
-        'rider.full_name':'rider_name',
-        'constructor.name':'constructor_name',
-        'team.name':'team_name'
-    }).copy()
+    df_cleaned = df.drop(columns=['session_type'], errors='ignore').rename(columns={'type': 'session_type', 'rider.id': 'rider_id', 'rider.full_name': 'rider_name', 'constructor.name': 'constructor_name', 'team.name': 'team_name'}).copy()
     df_cleaned['is_dnf'] = np.where(df_cleaned['status'] != 'INSTND', 1, 0)
     df_cleaned['position_cleaned'] = df_cleaned['position'].fillna(25).astype(int)
     return df_cleaned
