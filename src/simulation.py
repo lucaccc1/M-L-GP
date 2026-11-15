@@ -150,6 +150,24 @@ def simulate_race(df_pred, std_dev, n_sims=10000):
     res["top10_pct"] = np.round((ranks < 10).mean(axis=0) * 100, 2)
     return res.sort_values("win_pct", ascending=False).reset_index(drop=True)
 
+def get_completed_event(df_ml, event_id=None):
+    if event_id is None:
+        event_id = df_ml["event_id"].iloc[-1]
+    ev_df = df_ml[df_ml["event_id"] == event_id].copy()
+    circuit_name = ev_df["circuit_name"].iloc[0]
+    race_date = str(ev_df["date"].max())[:10]
+    sessions_data = {}
+    for st_type in ["SPR", "RAC"]:
+        sub = ev_df[ev_df["session_type"] == st_type].reset_index(drop=True)
+        if not sub.empty:
+            sessions_data[st_type] = sub
+    return {
+        "state": "BACKTEST (Gara Conclusa)",
+        "circuit_name": circuit_name,
+        "race_date": race_date,
+        "sessions_data": sessions_data
+    }
+
 if __name__ == "__main__":
     df_ml = pd.read_csv("data/processed/dataset_ml.csv", low_memory=False)
     df_ml["date"] = pd.to_datetime(df_ml["date"])
