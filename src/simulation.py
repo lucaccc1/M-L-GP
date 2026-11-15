@@ -130,7 +130,7 @@ def predict_session(df_session, bundle):
     reg, clf = bundle["reg"], bundle["clf"]
     cols = list(reg.feature_names_in_)
     df_out = df_session.copy()
-    df_out["pred_pos"] = reg.predict(df_out[cols])
+    df_out["pred_pos"] = np.clip(reg.predict(df_out[cols]), 1.0, 22.0)
     df_out["dnf_prob"] = clf.predict_proba(df_out[cols])[:, 1]
     return df_out
 
@@ -143,7 +143,7 @@ def simulate_race(df_pred, std_dev, n_sims=10000):
     crashes = rng.random((n_sims, n_riders)) < p_dnf
     scores = np.where(crashes, 999.0, scores)
     ranks = np.argsort(np.argsort(scores, axis=1), axis=1)
-    keep_cols = [c for c in ["rider_name", "constructor_name", "grid_position", "sprint_pos_same_weekend", "pred_pos", "dnf_prob"] if c in df_pred.columns]
+    keep_cols = [c for c in ["rider_name", "constructor_name", "grid_position", "sprint_pos_same_weekend", "pred_pos", "dnf_prob", "position_cleaned"] if c in df_pred.columns]
     res = df_pred[keep_cols].copy()
     res["win_pct"] = np.round((ranks == 0).mean(axis=0) * 100, 2)
     res["podium_pct"] = np.round((ranks < 3).mean(axis=0) * 100, 2)
@@ -162,7 +162,7 @@ def get_completed_event(df_ml, event_id=None):
         if not sub.empty:
             sessions_data[st_type] = sub
     return {
-        "state": "BACKTEST (Gara Conclusa)",
+        "state": "BACKTEST",
         "circuit_name": circuit_name,
         "race_date": race_date,
         "sessions_data": sessions_data
