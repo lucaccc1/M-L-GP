@@ -54,14 +54,14 @@ if rac_bundle is None and spr_bundle is None:
     )
     st.stop()
 
+st.markdown("#### Simulation mode")
 mode = st.segmented_control(
     "Simulation mode",
     options=["Upcoming GP forecast", "Historical backtest"],
     default="Upcoming GP forecast",
+    label_visibility="collapsed",
     key="sim_mode_selector",
 )
-
-st.divider()
 
 if mode == "Upcoming GP forecast":
     try:
