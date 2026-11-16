@@ -28,9 +28,6 @@ config = get_config()
 inventory = get_artifact_inventory(config)
 
 st.title(":material/account_tree: Pipeline orchestrator")
-st.caption(
-    "Orchestrates your original `src/*.py` scripts end-to-end or step-by-step without modifying `src/`."
-)
 
 # --- Artifact readiness KPI row ---
 raw_ready = inventory["raw_results"]["exists"] and inventory["raw_sessions"]["exists"]
@@ -110,9 +107,6 @@ def _execute_step(step_key: str, label: str, fn) -> None:
 if active_panel == "Execution controls":
     with st.container(border=True):
         st.subheader(":material/play_circle: End-to-end automation")
-        st.caption(
-            "Runs `src/ingestion.py` → `src/preprocessing.py` → `src/features.py` (+ optional `src/train.py`)."
-        )
 
         e2e_c1, e2e_c2, e2e_c3 = st.columns([1.4, 1.4, 1], vertical_alignment="bottom")
         with e2e_c1:
@@ -247,9 +241,6 @@ if active_panel == "Execution controls":
 elif active_panel == "Pipeline configuration":
     with st.form("pipeline_config_form"):
         st.subheader(":material/settings: Pipeline runtime parameters")
-        st.caption(
-            "Configure parameters supported by your `src/*.py` functions. Raw/processed/model folders follow your original `src/*.py` paths (`data/raw`, `data/processed`, `models`)."
-        )
 
         f1, f2, f3, f4 = st.columns(4)
         with f1:

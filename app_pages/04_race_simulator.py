@@ -25,9 +25,6 @@ init_session_state()
 config = get_config()
 
 st.title(":material/flag: Race simulator & backtest")
-st.caption(
-    "Runs directly on your original `src/simulation.py` functions (`detect_weekend_state`, `build_upcoming_race`, `predict_session`, `simulate_race`, `get_completed_event`)."
-)
 
 ml_mtime = file_mtime(config.dataset_ml_csv)
 df_ml = load_csv_cached(str(config.dataset_ml_csv), ml_mtime)

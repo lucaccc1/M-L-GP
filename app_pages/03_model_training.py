@@ -25,9 +25,6 @@ init_session_state()
 config = get_config()
 
 st.title(":material/model_training: Model training & diagnostics")
-st.caption(
-    "Train `RAC` and `SPR` models via `src/train.py` or evaluate existing `.pkl` bundles already in `models/`."
-)
 
 dataset_exists = config.dataset_ml_csv.exists()
 bundles_exist = (
