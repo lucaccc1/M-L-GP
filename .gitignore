@@ -12,3 +12,4 @@ models/*.joblib
 .env
 .vscode/
 .idea/
+.streamlit/
