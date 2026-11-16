@@ -26,6 +26,7 @@ st.caption(
     "Explore historical MotoGP sessions, engineered rolling features, and telemetry patterns."
 )
 
+st.markdown("#### Dataset source")
 dataset_choice = st.segmented_control(
     "Dataset source",
     options=[
@@ -34,6 +35,7 @@ dataset_choice = st.segmented_control(
         "Raw events (events.csv)",
     ],
     default="ML dataset (dataset_ml.csv)",
+    label_visibility="collapsed",
     key="explorer_dataset_choice",
 )
 

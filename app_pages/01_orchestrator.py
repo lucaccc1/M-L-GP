@@ -42,6 +42,7 @@ with col1:
         "Ready" if raw_ready else "Missing",
         delta=f"{inventory['raw_results']['size_kb']} KB" if raw_ready else "src/ingestion.py",
         delta_color="normal" if raw_ready else "off",
+        delta_arrow="off",
     )
 with col2:
     st.metric(
@@ -49,6 +50,7 @@ with col2:
         "Ready" if prep_ready else "Missing",
         delta=f"{inventory['cleaned_sessions']['size_kb']} KB" if prep_ready else "src/preprocessing.py",
         delta_color="normal" if prep_ready else "off",
+        delta_arrow="off",
     )
 with col3:
     st.metric(
@@ -56,6 +58,7 @@ with col3:
         "Ready" if feat_ready else "Missing",
         delta=f"{inventory['dataset_ml']['size_kb']} KB" if feat_ready else "src/features.py",
         delta_color="normal" if feat_ready else "off",
+        delta_arrow="off",
     )
 with col4:
     st.metric(
@@ -63,14 +66,17 @@ with col4:
         "RAC + SPR" if models_ready else "Missing",
         delta=inventory["model_rac"]["modified"] if models_ready else "src/train.py",
         delta_color="normal" if models_ready else "off",
+        delta_arrow="off",
     )
 
 st.divider()
 
+st.markdown("#### Workspace view")
 active_panel = st.segmented_control(
     "Workspace view",
     options=["Execution controls", "Pipeline configuration", "Artifact inventory"],
     default="Execution controls",
+    label_visibility="collapsed",
     key="orchestrator_panel_view",
 )
 

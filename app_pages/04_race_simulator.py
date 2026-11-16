@@ -145,6 +145,7 @@ if mode == "Upcoming GP forecast":
                 value=float(config.std_dev_multiplier),
                 step=0.05,
                 key="sim_std_mult",
+                help="Scales the model's calibrated validation Residual σ used as Gaussian noise in Monte Carlo runs (default: 1.00). Lower values (< 1.00) produce tighter, favorite-heavy outcomes; higher values (> 1.00) increase race unpredictability and spread podium/win odds across the grid.",
             )
         with s2:
             run_sim_btn = st.button(
@@ -268,13 +269,116 @@ if mode == "Upcoming GP forecast":
                 f"{sim_payload['std_dev']:.2f} pos",
                 delta=f"{sim_payload['n_sims']:,} runs · {sim_payload['weather']}",
                 delta_color="off",
+                delta_arrow="off",
+            )
+
+        session_kind = "sprint" if sim_payload["session"] == "SPR" else "race"
+        st.markdown(
+            f"#### :material/format_list_numbered: Projected {session_kind} classification — {sim_payload['session']}"
+        )
+
+        with st.container(key="podium_card_styles"):
+            st.html(
+                """
+                <style>
+                .st-key-podium_card_styles {
+                    display: none !important;
+                }
+                .st-key-podium_card_1 {
+                    background: linear-gradient(135deg, rgba(234, 179, 8, 0.25), rgba(234, 179, 8, 0.08)) !important;
+                    border-color: rgba(234, 179, 8, 0.55) !important;
+                }
+                .st-key-podium_card_2 {
+                    background: linear-gradient(135deg, rgba(203, 213, 225, 0.22), rgba(148, 163, 184, 0.07)) !important;
+                    border-color: rgba(203, 213, 225, 0.50) !important;
+                }
+                .st-key-podium_card_3 {
+                    background: linear-gradient(135deg, rgba(217, 119, 6, 0.24), rgba(180, 83, 9, 0.08)) !important;
+                    border-color: rgba(217, 119, 6, 0.52) !important;
+                }
+                .st-key-podium_card_1 h3,
+                .st-key-podium_card_2 h3,
+                .st-key-podium_card_3 h3 {
+                    margin: 0.1rem 0 0.25rem 0 !important;
+                    padding: 0 !important;
+                    font-size: 1.45rem !important;
+                    font-weight: 700 !important;
+                    line-height: 1.2 !important;
+                }
+                </style>
+                """
+            )
+
+        def _grid_move_badge(rank: int, grid_val: object) -> str:
+            if pd.isna(grid_val):
+                return ""
+            grid_pos = int(grid_val)
+            gain = grid_pos - rank
+            if gain > 0:
+                return f":green[▲ +{gain}]"
+            if gain < 0:
+                return f":red[▼ {gain}]"
+            return ":gray[—]"
+
+        podium_df = sim_df.head(3)
+        podium_cols = st.columns(len(podium_df))
+        podium_badges = [
+            ":orange[:material/trophy: P1 · WINNER]",
+            ":gray[:material/military_tech: P2 · PODIUM]",
+            ":red[:material/military_tech: P3 · PODIUM]",
+        ]
+        for idx, (_, row) in enumerate(podium_df.iterrows()):
+            rank = int(row["sim_rank"])
+            move_txt = _grid_move_badge(rank, row.get("grid_position"))
+            grid_txt = (
+                f"Grid P{int(row['grid_position'])}"
+                if pd.notna(row.get("grid_position"))
+                else "Grid N/A"
+            )
+            with podium_cols[idx]:
+                with st.container(border=True, key=f"podium_card_{idx + 1}"):
+                    st.markdown(f"**{podium_badges[idx]}**")
+                    st.markdown(f"### {row['rider_name']}")
+                    st.caption(f"{row['constructor_name']} · {grid_txt} {move_txt}")
+                    st.markdown(
+                        f"Win **{row['win_pct']:.1f}%** · Podium **{row['podium_pct']:.1f}%**"
+                    )
+
+        rest_df = sim_df.iloc[3:].reset_index(drop=True)
+        if not rest_df.empty:
+            n_cols = min(3, len(rest_df))
+            chunk_size = (len(rest_df) + n_cols - 1) // n_cols
+            with st.container(border=True):
+                grid_cols = st.columns(n_cols)
+                for col_idx in range(n_cols):
+                    chunk = rest_df.iloc[col_idx * chunk_size : (col_idx + 1) * chunk_size]
+                    lines = []
+                    for _, row in chunk.iterrows():
+                        rank = int(row["sim_rank"])
+                        move_txt = _grid_move_badge(rank, row.get("grid_position"))
+                        if rank <= 15:
+                            lines.append(
+                                f":primary-badge[**P{rank}**] **{row['rider_name']}** "
+                                f":gray[({row['constructor_name']})] {move_txt}"
+                            )
+                        else:
+                            lines.append(
+                                f":gray-badge[P{rank}] :gray[{row['rider_name']} "
+                                f"({row['constructor_name']})] {move_txt}"
+                            )
+                    with grid_cols[col_idx]:
+                        st.markdown("\n\n".join(lines))
+            st.caption(
+                ":primary-badge[P1–P15] Inside Points · :gray-badge[P16+] Outside Top 15"
             )
 
         st.divider()
+        st.markdown("#### Forecast visualization")
         chart_tab = st.segmented_control(
             "Forecast visualization",
             options=["Win / Podium / Top 10 odds", "Expected pace vs crash risk"],
             default="Win / Podium / Top 10 odds",
+            label_visibility="collapsed",
             key="sim_chart_choice",
         )
         if chart_tab == "Win / Podium / Top 10 odds":
@@ -446,10 +550,15 @@ else:
                 pred_winner,
                 delta=f"Actual: {actual_winner}",
                 delta_color="off",
+                delta_arrow="off",
             )
         with k2:
             st.metric(
-                "Podium accuracy", f"{podium_hits} / 3", delta="Top 3 overlap"
+                "Podium accuracy",
+                f"{podium_hits} / 3",
+                delta="Top 3 overlap",
+                delta_color="off",
+                delta_arrow="off",
             )
         with k3:
             st.metric(
@@ -457,6 +566,7 @@ else:
                 f"{event_mae:.2f} pos",
                 delta=bt_payload["session"],
                 delta_color="off",
+                delta_arrow="off",
             )
         with k4:
             st.metric(
@@ -464,6 +574,7 @@ else:
                 bt_payload["circuit"],
                 delta=bt_payload["date"],
                 delta_color="off",
+                delta_arrow="off",
             )
 
         st.altair_chart(

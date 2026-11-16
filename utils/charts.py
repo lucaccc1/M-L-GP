@@ -2,19 +2,64 @@
 
 from __future__ import annotations
 
+import hashlib
+import re
+
 import altair as alt
 import pandas as pd
 
-CONSTRUCTOR_PALETTE = [
-    "#D90429",  # Ducati-style crimson
-    "#1D4ED8",  # Yamaha-style blue
-    "#EA580C",  # KTM-style orange
-    "#0D9488",  # Aprilia-style teal
-    "#6D28D9",  # Purple
-    "#0284C7",  # Sky blue
-    "#4B5563",  # Neutral slate
-    "#CA8A04",  # Gold
+CONSTRUCTOR_BRAND_COLORS: list[tuple[str, str]] = [
+    ("ducati", "#E10600"),     # Rosso Ducati
+    ("aprilia", "#9333EA"),    # Viola Aprilia
+    ("ktm", "#FF7A00"),        # Arancione KTM
+    ("yamaha", "#2563EB"),     # Blu Yamaha
+    ("honda", "#E23D10"),      # Arancione scuro Honda (più scuro di KTM)
+    ("suzuki", "#06B6D4"),     # Azzurro Suzuki Ecstar
+    ("gasgas", "#BE123C"),     # Cremisi GASGAS
+    ("kawasaki", "#16A34A"),   # Verde Kawasaki
+    ("bmw", "#0EA5E9"),        # Celeste BMW Motorrad
+    ("kalex", "#EAB308"),      # Oro/giallo Kalex
+    ("suter", "#14B8A6"),      # Verde acqua Suter
+    ("art", "#64748B"),        # Grigio ardesia ART
+    ("ftr", "#84CC16"),        # Lime FTR
+    ("cagiva", "#9F1239"),     # Rosso scuro Cagiva
+    ("mv agusta", "#B91C1C"),  # Rosso classico MV Agusta
+    ("bimota", "#10B981"),     # Smeraldo Bimota
+    ("ilmor", "#6366F1"),      # Indaco Ilmor
 ]
+
+_FALLBACK_CONSTRUCTOR_PALETTE = [
+    "#0D9488",
+    "#EC4899",
+    "#65A30D",
+    "#0284C7",
+    "#A855F7",
+    "#CA8A04",
+    "#059669",
+    "#475569",
+]
+
+
+def constructor_color_for_name(name: object) -> str:
+    """Return a consistent MotoGP-coherent hex color for a constructor name."""
+    cleaned = str(name or "").strip().lower()
+    for brand, hex_color in CONSTRUCTOR_BRAND_COLORS:
+        if re.search(rf"\b{re.escape(brand)}\b", cleaned):
+            return hex_color
+    digest = hashlib.md5(cleaned.encode("utf-8")).hexdigest()
+    idx = int(digest[:8], 16) % len(_FALLBACK_CONSTRUCTOR_PALETTE)
+    return _FALLBACK_CONSTRUCTOR_PALETTE[idx]
+
+
+def constructor_color_scale(constructors: pd.Series) -> alt.Scale:
+    """Build an explicit Altair domain/range Scale mapping each constructor to its color."""
+    unique_names = sorted({str(c) for c in constructors.dropna().tolist()})
+    if not unique_names:
+        return alt.Scale(range=_FALLBACK_CONSTRUCTOR_PALETTE)
+    return alt.Scale(
+        domain=unique_names,
+        range=[constructor_color_for_name(name) for name in unique_names],
+    )
 
 
 def constructor_season_trend_chart(df: pd.DataFrame) -> alt.Chart:
@@ -43,7 +88,7 @@ def constructor_season_trend_chart(df: pd.DataFrame) -> alt.Chart:
             color=alt.Color(
                 "constructor_name:N",
                 title="Constructor",
-                scale=alt.Scale(range=CONSTRUCTOR_PALETTE),
+                scale=constructor_color_scale(agg["constructor_name"]),
             ),
             opacity=alt.condition(selection, alt.value(1.0), alt.value(0.2)),
             tooltip=[
@@ -89,7 +134,7 @@ def rider_pace_vs_dnf_chart(df: pd.DataFrame, min_starts: int = 5) -> alt.Chart:
             color=alt.Color(
                 "constructor_name:N",
                 title="Constructor",
-                scale=alt.Scale(range=CONSTRUCTOR_PALETTE),
+                scale=constructor_color_scale(agg["constructor_name"]),
             ),
             tooltip=[
                 alt.Tooltip("rider_name:N", title="Rider"),
@@ -222,7 +267,7 @@ def pred_vs_actual_chart(predictions: list[dict]) -> alt.Chart:
             color=alt.Color(
                 "constructor_name:N",
                 title="Constructor",
-                scale=alt.Scale(range=CONSTRUCTOR_PALETTE),
+                scale=constructor_color_scale(fin["constructor_name"]),
             ),
             tooltip=[
                 alt.Tooltip("rider_name:N", title="Rider"),
@@ -317,15 +362,29 @@ def simulation_odds_chart(sim_df: pd.DataFrame, top_n: int = 15) -> alt.Chart:
     return chart
 
 
-def pace_vs_crash_risk_chart(sim_df: pd.DataFrame) -> alt.Chart:
+def pace_vs_crash_risk_chart(
+    sim_df: pd.DataFrame, theme_type: str | None = None
+) -> alt.Chart:
     """Scatter chart plotting expected finishing position against DNF risk."""
+    if theme_type is None:
+        try:
+            import streamlit as st
+
+            theme_type = getattr(getattr(st.context, "theme", None), "type", "dark")
+        except Exception:
+            theme_type = "dark"
+
+    is_dark = str(theme_type).lower() != "light"
+    label_color = "#F3F4F6" if is_dark else "#0F172A"
+    point_stroke = "#0E1117" if is_dark else "#FFFFFF"
+
     df_c = sim_df.copy()
     df_c["dnf_pct"] = (df_c["dnf_prob"] * 100).round(2)
     df_c["pred_pos_r"] = df_c["pred_pos"].round(2)
 
     points = (
         alt.Chart(df_c)
-        .mark_circle(opacity=0.88, stroke="#FFFFFF", strokeWidth=1.2)
+        .mark_circle(opacity=0.88, stroke=point_stroke, strokeWidth=1.2)
         .encode(
             x=alt.X(
                 "pred_pos_r:Q",
@@ -341,7 +400,7 @@ def pace_vs_crash_risk_chart(sim_df: pd.DataFrame) -> alt.Chart:
             color=alt.Color(
                 "constructor_name:N",
                 title="Constructor",
-                scale=alt.Scale(range=CONSTRUCTOR_PALETTE),
+                scale=constructor_color_scale(df_c["constructor_name"]),
             ),
             tooltip=[
                 alt.Tooltip("rider_name:N", title="Rider"),
@@ -356,7 +415,14 @@ def pace_vs_crash_risk_chart(sim_df: pd.DataFrame) -> alt.Chart:
     )
     labels = (
         alt.Chart(df_c.head(10))
-        .mark_text(align="left", dx=8, dy=-6, fontSize=11)
+        .mark_text(
+            align="left",
+            dx=8,
+            dy=-6,
+            fontSize=11,
+            fontWeight="bold",
+            color=label_color,
+        )
         .encode(
             x="pred_pos_r:Q",
             y="dnf_pct:Q",

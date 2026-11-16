@@ -33,39 +33,106 @@ bundles_exist = (
 
 with st.form("model_training_form"):
     st.subheader(":material/tune: Training configuration")
+    st.caption(
+        "Hover over each `?` icon for parameter guidance, or open the configuration guide below."
+    )
     c1, c2, c3, c4 = st.columns(4)
     with c1:
         train_sessions = st.multiselect(
             "Sessions to train",
             options=["RAC", "SPR"],
             default=config.train_sessions,
+            help="Select which session models to train: RAC (Sunday Grand Prix) and/or SPR (Saturday Sprint). Each saves a separate bundle in models/.",
         )
     with c2:
         train_end_year = st.number_input(
-            "Train end year (<=)", min_value=2018, max_value=2028, value=config.train_end_year
+            "Train end year (<=)",
+            min_value=2018,
+            max_value=2028,
+            value=config.train_end_year,
+            help="Last season included in the training set (default: 2024). Keep it strictly earlier than Validation year to avoid temporal leakage.",
         )
     with c3:
         val_year = st.number_input(
-            "Validation year (==)", min_value=2019, max_value=2029, value=config.val_year
+            "Validation year (==)",
+            min_value=2019,
+            max_value=2029,
+            value=config.val_year,
+            help="Holdout season used to benchmark generalization and calibrate Residual σ for Monte Carlo simulations (default: 2025).",
         )
     with c4:
         test_year = st.number_input(
-            "Test year (==)", min_value=2020, max_value=2030, value=config.test_year
+            "Test year (==)",
+            min_value=2020,
+            max_value=2030,
+            value=config.test_year,
+            help="Final unseen season evaluated after training (default: 2026). Must come after Validation year.",
         )
 
     r1, r2, r3, d1, d2, d3 = st.columns(6)
     with r1:
-        reg_max_iter = st.number_input("Reg max_iter", min_value=20, max_value=1000, value=config.reg_max_iter, step=25)
+        reg_max_iter = st.number_input(
+            "Reg max_iter",
+            min_value=20,
+            max_value=1000,
+            value=config.reg_max_iter,
+            step=25,
+            help="Boosting trees for the finishing-position Regressor (default: 200). Higher captures finer pace patterns but can overfit if lr is high.",
+        )
     with r2:
-        reg_lr = st.number_input("Reg lr", min_value=0.005, max_value=0.5, value=float(config.reg_learning_rate), step=0.01, format="%.3f")
+        reg_lr = st.number_input(
+            "Reg lr",
+            min_value=0.005,
+            max_value=0.5,
+            value=float(config.reg_learning_rate),
+            step=0.01,
+            format="%.3f",
+            help="Learning rate for the position Regressor (default: 0.050). Lower values (0.02–0.04) smooth updates and pair well with higher max_iter.",
+        )
     with r3:
-        reg_depth = st.number_input("Reg max_depth", min_value=2, max_value=12, value=config.reg_max_depth)
+        reg_depth = st.number_input(
+            "Reg max_depth",
+            min_value=2,
+            max_value=12,
+            value=config.reg_max_depth,
+            help="Max tree depth for the position Regressor (default: 4). Higher models complex feature interactions; lower (3–4) prevents overfitting.",
+        )
     with d1:
-        clf_max_iter = st.number_input("DNF max_iter", min_value=20, max_value=1000, value=config.clf_max_iter, step=25)
+        clf_max_iter = st.number_input(
+            "DNF max_iter",
+            min_value=20,
+            max_value=1000,
+            value=config.clf_max_iter,
+            step=25,
+            help="Boosting trees for the DNF Classifier (default: 150). Adjust while monitoring Validation DNF ROC-AUC.",
+        )
     with d2:
-        clf_lr = st.number_input("DNF lr", min_value=0.005, max_value=0.5, value=float(config.clf_learning_rate), step=0.01, format="%.3f")
+        clf_lr = st.number_input(
+            "DNF lr",
+            min_value=0.005,
+            max_value=0.5,
+            value=float(config.clf_learning_rate),
+            step=0.01,
+            format="%.3f",
+            help="Learning rate for the DNF Classifier (default: 0.050). Smaller values keep crash probabilities better calibrated.",
+        )
     with d3:
-        clf_depth = st.number_input("DNF max_depth", min_value=2, max_value=12, value=config.clf_max_depth)
+        clf_depth = st.number_input(
+            "DNF max_depth",
+            min_value=2,
+            max_value=12,
+            value=config.clf_max_depth,
+            help="Max tree depth for the DNF Classifier (default: 3). Shallow trees (2–4) avoid memorizing rare one-off crashes.",
+        )
+
+    with st.expander(":material/menu_book: Parameter tuning guide", expanded=False):
+        st.markdown(
+            """
+            - **Temporal split (`Train end year` < `Validation year` < `Test year`)**: Keeps training strictly chronological. `Validation year` is also used to measure `Residual σ`, which drives Monte Carlo variance in the Race Simulator.
+            - **Position Regressor (`Reg max_iter`, `Reg lr`, `Reg max_depth`)**: Trained only on classified finishers (`is_dnf == 0`) to predict expected finishing position (`pred_pos`). Increase `max_iter` while lowering `lr` if `Val MAE` improves without hurting `Test MAE`; keep `max_depth` around `3–5` to prevent overfitting.
+            - **DNF Classifier (`DNF max_iter`, `DNF lr`, `DNF max_depth`)**: Trained on all starters to estimate retirement risk (`dnf_prob`). Since MotoGP crashes are noisy, shallower trees (`max_depth` `2–4`) and moderate learning rates (`0.03–0.05`) usually yield higher `DNF ROC-AUC`.
+            """
+        )
 
     train_submit = st.form_submit_button(
         "Train & evaluate models",
@@ -167,6 +234,26 @@ if not metrics_report or not metrics_report.get("sessions"):
 
 st.caption(f"Diagnostics timestamp: `{metrics_report.get('trained_at', 'N/A')[:19].replace('T', ' ')} UTC`")
 
+def _benchmark_delta_style(
+    val_num: float | None,
+    test_num: float | None,
+    higher_is_better: bool,
+    decimals: int = 2,
+) -> tuple[str, str]:
+    """Return (delta_color, delta_arrow) comparing Test vs Val for st.metric."""
+    if val_num is None or test_num is None:
+        return "off", "off"
+    v_disp = round(float(val_num), decimals)
+    t_disp = round(float(test_num), decimals)
+    if t_disp == v_disp:
+        return "off", "off"
+    went_up = t_disp > v_disp
+    is_good = went_up if higher_is_better else not went_up
+    color = "normal" if is_good else "inverse"
+    arrow = "up" if went_up else "down"
+    return color, arrow
+
+
 avail_sessions = list(metrics_report["sessions"].keys())
 for sess_key in avail_sessions:
     sdata = metrics_report["sessions"][sess_key]
@@ -178,11 +265,15 @@ for sess_key in avail_sessions:
     with m1:
         mae_v = val_m.get("mae")
         mae_t = test_m.get("mae")
+        mae_color, mae_arrow = _benchmark_delta_style(
+            mae_v, mae_t, higher_is_better=False, decimals=2
+        )
         st.metric(
             f"{sess_key} Val MAE",
             f"{mae_v:.2f} pos" if mae_v is not None else "N/A",
             delta=f"Test: {mae_t:.2f}" if mae_t is not None else "No test data",
-            delta_color="off",
+            delta_color=mae_color,
+            delta_arrow=mae_arrow,
         )
     with m2:
         std_v = sdata.get("effective_std_dev")
@@ -191,28 +282,38 @@ for sess_key in avail_sessions:
             f"{std_v:.2f}" if std_v is not None else "N/A",
             delta="Used in Monte Carlo",
             delta_color="off",
+            delta_arrow="off",
         )
     with m3:
         auc_v = val_m.get("dnf_auc")
         auc_t = test_m.get("dnf_auc")
+        auc_color, auc_arrow = _benchmark_delta_style(
+            auc_v, auc_t, higher_is_better=True, decimals=3
+        )
         st.metric(
             f"{sess_key} DNF ROC-AUC",
             f"{auc_v:.3f}" if auc_v is not None else "N/A",
             delta=f"Test: {auc_t:.3f}" if auc_t is not None else "No test data",
-            delta_color="off",
+            delta_color=auc_color,
+            delta_arrow=auc_arrow,
         )
     with m4:
         pod_v = val_m.get("podium_hits")
         pod_t = test_m.get("podium_hits")
+        pod_color, pod_arrow = _benchmark_delta_style(
+            pod_v, pod_t, higher_is_better=True, decimals=2
+        )
         st.metric(
             f"{sess_key} Podium hits",
             f"{pod_v:.2f} / 3" if pod_v is not None else "N/A",
             delta=f"Test: {pod_t:.2f} / 3" if pod_t is not None else "No test data",
-            delta_color="off",
+            delta_color=pod_color,
+            delta_arrow=pod_arrow,
         )
 
 st.divider()
 
+st.markdown("#### Diagnostic view")
 diag_view = st.segmented_control(
     "Diagnostic view",
     options=[
@@ -222,6 +323,7 @@ diag_view = st.segmented_control(
         "Evaluation table",
     ],
     default="Split comparison",
+    label_visibility="collapsed",
     key="train_diag_view",
 )
 
