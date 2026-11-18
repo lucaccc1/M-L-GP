@@ -545,11 +545,12 @@ else:
 
         k1, k2, k3, k4 = st.columns(4)
         with k1:
+            winner_hit = str(pred_winner).strip() == str(actual_winner).strip()
             st.metric(
                 "Predicted vs actual winner",
                 pred_winner,
                 delta=f"Actual: {actual_winner}",
-                delta_color="off",
+                delta_color="normal" if winner_hit else "inverse",
                 delta_arrow="off",
             )
         with k2:
