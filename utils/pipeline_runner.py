@@ -287,14 +287,24 @@ def _compute_importances(
 
     reg_imp = (
         permutation_importance(
-            reg, X_fin, y_fin, n_repeats=5, random_state=random_state
+            reg,
+            X_fin,
+            y_fin,
+            scoring="neg_mean_absolute_error",
+            n_repeats=5,
+            random_state=random_state,
         ).importances_mean
         if len(eval_fin) >= 10
         else np.zeros(X_fin.shape[1])
     )
     clf_imp = (
         permutation_importance(
-            clf, X_all, y_dnf, n_repeats=5, random_state=random_state
+            clf,
+            X_all,
+            y_dnf,
+            scoring="roc_auc",
+            n_repeats=5,
+            random_state=random_state,
         ).importances_mean
         if len(df_eval) >= 10 and y_dnf.nunique() > 1
         else np.zeros(X_all.shape[1])

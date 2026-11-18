@@ -77,7 +77,7 @@ with st.form("model_training_form"):
             max_value=1000,
             value=config.reg_max_iter,
             step=25,
-            help="Boosting trees for the finishing-position Regressor (default: 200). Higher captures finer pace patterns but can overfit if lr is high.",
+            help="Boosting trees for the finishing-position Regressor (default: 250). Higher captures finer pace patterns but can overfit if lr is high.",
         )
     with r2:
         reg_lr = st.number_input(
@@ -87,7 +87,7 @@ with st.form("model_training_form"):
             value=float(config.reg_learning_rate),
             step=0.01,
             format="%.3f",
-            help="Learning rate for the position Regressor (default: 0.050). Lower values (0.02–0.04) smooth updates and pair well with higher max_iter.",
+            help="Learning rate for the position Regressor (default: 0.040). Lower values (0.02–0.04) smooth updates and pair well with higher max_iter.",
         )
     with r3:
         reg_depth = st.number_input(
@@ -95,7 +95,7 @@ with st.form("model_training_form"):
             min_value=2,
             max_value=12,
             value=config.reg_max_depth,
-            help="Max tree depth for the position Regressor (default: 4). Higher models complex feature interactions; lower (3–4) prevents overfitting.",
+            help="Max tree depth for the position Regressor (default: 3). Higher models complex feature interactions; lower (3–4) prevents overfitting.",
         )
     with d1:
         clf_max_iter = st.number_input(
@@ -104,7 +104,7 @@ with st.form("model_training_form"):
             max_value=1000,
             value=config.clf_max_iter,
             step=25,
-            help="Boosting trees for the DNF Classifier (default: 150). Adjust while monitoring Validation DNF ROC-AUC.",
+            help="Boosting trees for the DNF Classifier (default: 75). Adjust while monitoring Validation DNF ROC-AUC.",
         )
     with d2:
         clf_lr = st.number_input(
@@ -114,7 +114,7 @@ with st.form("model_training_form"):
             value=float(config.clf_learning_rate),
             step=0.01,
             format="%.3f",
-            help="Learning rate for the DNF Classifier (default: 0.050). Smaller values keep crash probabilities better calibrated.",
+            help="Learning rate for the DNF Classifier (default: 0.020). Smaller values keep crash probabilities better calibrated.",
         )
     with d3:
         clf_depth = st.number_input(
@@ -122,15 +122,15 @@ with st.form("model_training_form"):
             min_value=2,
             max_value=12,
             value=config.clf_max_depth,
-            help="Max tree depth for the DNF Classifier (default: 3). Shallow trees (2–4) avoid memorizing rare one-off crashes.",
+            help="Max tree depth for the DNF Classifier (default: 2). Shallow trees (2–3) avoid memorizing rare one-off crashes.",
         )
 
     with st.expander(":material/menu_book: Parameter tuning guide", expanded=False):
         st.markdown(
             """
             - **Temporal split (`Train end year` < `Validation year` < `Test year`)**: Keeps training strictly chronological. `Validation year` is also used to measure `Residual σ`, which drives Monte Carlo variance in the Race Simulator.
-            - **Position Regressor (`Reg max_iter`, `Reg lr`, `Reg max_depth`)**: Trained only on classified finishers (`is_dnf == 0`) to predict expected finishing position (`pred_pos`). Increase `max_iter` while lowering `lr` if `Val MAE` improves without hurting `Test MAE`; keep `max_depth` around `3–5` to prevent overfitting.
-            - **DNF Classifier (`DNF max_iter`, `DNF lr`, `DNF max_depth`)**: Trained on all starters to estimate retirement risk (`dnf_prob`). Since MotoGP crashes are noisy, shallower trees (`max_depth` `2–4`) and moderate learning rates (`0.03–0.05`) usually yield higher `DNF ROC-AUC`.
+            - **Position Regressor (`Reg max_iter`, `Reg lr`, `Reg max_depth`)**: Trained only on classified finishers (`is_dnf == 0`) to predict expected finishing position (`pred_pos`). Increase `max_iter` while lowering `lr` if `Val MAE` improves without hurting `Test MAE`; keep `max_depth` around `3–4` to prevent overfitting.
+            - **DNF Classifier (`DNF max_iter`, `DNF lr`, `DNF max_depth`)**: Trained on all starters to estimate retirement risk (`dnf_prob`). Since MotoGP crashes are noisy, shallow trees (`max_depth` `2–3`) and low learning rates (`0.02–0.04`) usually yield higher `DNF ROC-AUC`.
             """
         )
 

@@ -23,12 +23,12 @@ class AppConfig:
     train_end_year: int = 2024
     val_year: int = 2025
     test_year: int = 2026
-    reg_max_iter: int = 200
-    reg_learning_rate: float = 0.05
-    reg_max_depth: int = 4
-    clf_max_iter: int = 150
-    clf_learning_rate: float = 0.05
-    clf_max_depth: int = 3
+    reg_max_iter: int = 250
+    reg_learning_rate: float = 0.04
+    reg_max_depth: int = 3
+    clf_max_iter: int = 75
+    clf_learning_rate: float = 0.02
+    clf_max_depth: int = 2
     random_state: int = 42
     dnf_rank_penalty: float = 15.0
 
