@@ -2,8 +2,6 @@
 
 **M(L)GP** is an end-to-end **Data Engineering, Machine Learning, and Monte Carlo Simulation** pipeline that predicts **MotoGP Sprint** and **Grand Prix** race outcomes, delivering win, podium, and top-10 probabilities tailored to the exact stage of a race weekend.
 
----
-
 ## Highlights
 
 - **Incremental MotoGP API Ingestion:** pulls official seasons, sessions, and classifications from the MotoGP PulseLive API while skipping already finished historical events.
@@ -13,19 +11,11 @@
 - **10,000-Race Monte Carlo Simulator:** samples race-to-race pace variance ($\sigma$) and Bernoulli crash events across parallel simulated races to compute realistic `Win %`, `Podium %`, and `Top 10 %` odds.
 - **Weekend State Auto-Detection & Backtesting:** adapts automatically to `PRE_QUALIFYING`, `POST_QUALIFYING`, and `POST_SPRINT` states, plus historical GP backtesting and an optional **Streamlit** dashboard.
 
----
-
 ## Overview
 
 Predicting MotoGP races is notoriously noisy: a fast rider with aggressive race pace might also carry a high crash probability, while a consistent podium contender benefits whenever front runners DNF. A single deterministic regression score misses that interaction completely.
 
 **M(L)GP** solves this in two decoupled stages. First, a strictly causal data pipeline transforms raw timing feeds into historical form, circuit affinity, and reliability features to train separate `RAC` and `SPR` Gradient Boosting models. Second, a vectorized Monte Carlo engine uses each rider's predicted pace ($\mu$), predicted crash risk ($P(\text{DNF})$), and historical validation dispersion ($\sigma$) to simulate **10,000 full race weekends** (default value) ranking all riders head-to-head inside every single simulated race.
-
-### Author
-
-Created by **Luca**, built to combine motorsport domain knowledge, leak free time series feature engineering, and probabilistic race simulation into a clean, reproducible Python pipeline.
-
----
 
 ## Usage
 
@@ -60,8 +50,6 @@ Explore historical datasets, tune model hyperparameters, edit starting grids in 
 streamlit run app.py
 ```
 
----
-
 ## Installation
 
 **Requirements:** Python `3.10+`.
@@ -75,6 +63,10 @@ pip install -r requirements.txt
 *(Recommended: run inside a virtual environment such as `python -m venv .venv`.)*
 
 ---
+
+### Author
+
+Created by **Luca**, built to combine motorsport domain knowledge, leak free time series feature engineering, and probabilistic race simulation into a clean, reproducible Python pipeline.
 
 ## Roadmap
 
