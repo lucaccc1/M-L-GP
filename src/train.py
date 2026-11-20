@@ -16,7 +16,7 @@ def split_data(df):
     return train, val, test
 
 def get_features_target(df, session_type):
-    base_cols = ["grid_position", "is_front_row", "is_wet", "rider_last3_avg", "rider_last5_avg", "dnf_ratio_last5", "dnf_ratio_last10", "rider_avg_gain", "rider_circuit_avg", "constructor_circuit_avg", "constructor_last3_avg", "constructor_last5_avg", "circuit_dnf_rate", "clean_finish_streak"]
+    base_cols = ["grid_position", "is_front_row", "is_wet", "rider_last3_avg", "rider_last5_avg", "dnf_ratio_last5", "dnf_ratio_last10", "rider_avg_gain", "rider_circuit_avg", "constructor_circuit_avg", "constructor_last3_avg", "constructor_last5_avg", "circuit_dnf_rate", "clean_finish_streak", "fp_avg_pos", "pr_pos", "fp_vs_grid_delta"]
     if session_type == "RAC":
         cols = base_cols + ["rider_last3_avg_rac", "sprint_pos_same_weekend"]
     elif session_type == "SPR":

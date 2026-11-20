@@ -178,6 +178,14 @@ if mode == "Upcoming GP forecast":
             col_cfg["sprint_pos_same_weekend"] = st.column_config.NumberColumn(
                 "Sprint finish", min_value=1, max_value=30, step=1
             )
+        if "fp_avg_pos" in grid_source_df.columns:
+            col_cfg["fp_avg_pos"] = st.column_config.NumberColumn(
+                "FP avg", min_value=1.0, max_value=30.0, step=0.1, format="%.2f"
+            )
+        if "pr_pos" in grid_source_df.columns:
+            col_cfg["pr_pos"] = st.column_config.NumberColumn(
+                "Practice (PR)", min_value=1, max_value=30, step=1
+            )
 
         grid_source_df = st.data_editor(
             grid_source_df,

@@ -159,6 +159,7 @@ def execute_features(
         ("constructor_rolling_avg", feat.constructor_rolling_avg),
         ("circuit_dnf_rate", feat.circuit_dnf_rate),
         ("clean_finish_streak", feat.clean_finish_streak),
+        ("practice_features", feat.practice_features),
     ]
 
     df = None

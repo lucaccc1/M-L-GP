@@ -85,6 +85,25 @@ def clean_finish_streak(df):
     df["clean_finish_streak"] = (raw_streak.groupby(df["rider_id"]).shift(1).fillna(0).astype(int))
     return df
 
+def practice_features(df):
+    res = pd.read_csv("data/raw/results.csv", low_memory=False)
+    sess = pd.read_csv("data/raw/sessions.csv", low_memory=False).drop_duplicates(subset=["id"], keep="last")
+    p_df = pd.merge(res, sess[["id", "type", "number"]], left_on="session_id", right_on="id", how="left")
+    p_df = p_df[p_df["type"].isin(["FP", "P", "PR"])].copy()
+    p_df = p_df.rename(columns={"rider.id": "rider_id"})
+    p_df = p_df.drop_duplicates(subset=["session_id", "rider_id"], keep="last")
+    p_df["pos_num"] = pd.to_numeric(p_df["position"], errors="coerce")
+    fp_mask = (p_df["type"] == "FP") | ((p_df["type"] == "P") & (p_df["number"] == 1))
+    fp_agg = p_df[fp_mask].groupby(["event_id", "rider_id"], as_index=False)["pos_num"]
+    fp_agg = fp_agg.mean().rename(columns={"pos_num": "fp_avg_pos"})
+    pr_mask = (p_df["type"] == "PR") | ((p_df["type"] == "P") & (p_df["number"] == 2))
+    pr_agg = p_df[pr_mask].drop_duplicates(subset=["event_id", "rider_id"], keep="last")[["event_id", "rider_id", "pos_num"]]
+    pr_agg = pr_agg.rename(columns={"pos_num": "pr_pos"})
+    df = df.merge(fp_agg, on=["event_id", "rider_id"], how="left")
+    df = df.merge(pr_agg, on=["event_id", "rider_id"], how="left")
+    df["fp_vs_grid_delta"] = df["fp_avg_pos"] - df["grid_position"]
+    return df
+
 if __name__ == "__main__":
     df = load_data()
     df = order_by_date(df)
@@ -100,5 +119,6 @@ if __name__ == "__main__":
     df = constructor_rolling_avg(df)
     df = circuit_dnf_rate(df)
     df = clean_finish_streak(df)
+    df = practice_features(df)
     os.makedirs("data/processed", exist_ok=True)
     df.to_csv("data/processed/dataset_ml.csv", index=False)

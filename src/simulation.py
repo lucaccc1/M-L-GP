@@ -46,6 +46,23 @@ def extract_real_grid(ev_results, sessions):
     grid["grid_position"] = grid["grid_position"].fillna(22).astype(int)
     return grid.rename(columns={"rider.id": "rider_id", "rider.full_name": "rider_name", "constructor.name": "constructor_name"})
 
+def extract_practice_summary(ev_results, sessions):
+    if ev_results.empty:
+        return pd.DataFrame(columns=["rider_id", "fp_avg_pos", "pr_pos"])
+    ev_res = pd.merge(ev_results, sessions[["id", "type", "number"]], left_on="session_id", right_on="id", how="left")
+    p_df = ev_res[ev_res["type"].isin(["FP", "P", "PR"])].copy()
+    if p_df.empty:
+        return pd.DataFrame(columns=["rider_id", "fp_avg_pos", "pr_pos"])
+    p_df = p_df.rename(columns={"rider.id": "rider_id"})
+    p_df = p_df.drop_duplicates(subset=["session_id", "rider_id"], keep="last")
+    p_df["pos_num"] = pd.to_numeric(p_df["position"], errors="coerce")
+    fp_mask = (p_df["type"] == "FP") | ((p_df["type"] == "P") & (p_df["number"] == 1))
+    fp_agg = p_df[fp_mask].groupby("rider_id", as_index=False)["pos_num"].mean().rename(columns={"pos_num": "fp_avg_pos"})
+    pr_mask = (p_df["type"] == "PR") | ((p_df["type"] == "P") & (p_df["number"] == 2))
+    pr_agg = p_df[pr_mask].drop_duplicates(subset=["rider_id"], keep="last")[["rider_id", "pos_num"]].rename(columns={"pos_num": "pr_pos"})
+    pr_ret = pd.merge(fp_agg, pr_agg, on="rider_id", how="outer")
+    return pr_ret
+
 def detect_weekend_state(df_ml):
     events = pd.read_csv("data/raw/events.csv", low_memory=False)
     sessions = pd.read_csv("data/raw/sessions.csv", low_memory=False).drop_duplicates(subset=["id"], keep="last")
@@ -70,8 +87,17 @@ def detect_weekend_state(df_ml):
             is_wet = 1
     if not has_qual:
         state = "PRE_QUALIFYING"
-        last_rac_sid = df_ml[df_ml["session_type"] == "RAC"]["session_id"].iloc[-1]
-        roster = df_ml[df_ml["session_id"] == last_rac_sid][["rider_id", "rider_name", "constructor_name"]].drop_duplicates().reset_index(drop=True)
+        ev_prac = ev_results[ev_results["session_type"].isin(["FP", "P", "PR"])] if not ev_results.empty else pd.DataFrame()
+        if not ev_prac.empty:
+            roster = (
+                ev_prac[["rider.id", "rider.full_name", "constructor.name"]]
+                .drop_duplicates(subset=["rider.id"])
+                .rename(columns={"rider.id": "rider_id", "rider.full_name": "rider_name", "constructor.name": "constructor_name"})
+                .reset_index(drop=True)
+            )
+        else:
+            last_rac_sid = df_ml[df_ml["session_type"] == "RAC"]["session_id"].iloc[-1]
+            roster = df_ml[df_ml["session_id"] == last_rac_sid][["rider_id", "rider_name", "constructor_name"]].drop_duplicates().reset_index(drop=True)
         grid_df = estimate_grid_from_history(roster, df_ml)
         sessions_to_predict = ["SPR", "RAC"]
     elif not has_spr:
@@ -86,6 +112,9 @@ def detect_weekend_state(df_ml):
         spr_res = spr_res.rename(columns={"rider.id": "rider_id"}).drop_duplicates(subset=["rider_id"])
         grid_df = pd.merge(grid_df, spr_res[["rider_id", "sprint_pos_same_weekend"]], on="rider_id", how="left")
         sessions_to_predict = ["RAC"]
+    practice_df = extract_practice_summary(ev_results, sessions)
+    if not practice_df.empty:
+        grid_df = pd.merge(grid_df, practice_df, on="rider_id", how="left")
     return {
         "state": state,
         "circuit_name": circuit_name,
@@ -116,6 +145,8 @@ def build_upcoming_race(df_ml, grid_df, circuit_name, session_type="RAC", is_wet
         r_circ = r_hist[r_hist["circuit_name"].str.contains(circuit_name, case=False, regex=False, na=False)]
         c_hist = df_ml[df_ml["constructor_name"] == const].groupby("session_id", sort=False)["position_cleaned"].mean()
         c_circ = df_ml[(df_ml["constructor_name"] == const) & (df_ml["circuit_name"].str.contains(circuit_name, case=False, regex=False, na=False))].groupby("session_id", sort=False)["position_cleaned"].mean()
+        fp_avg = r.get("fp_avg_pos", np.nan)
+        pr_pos = r.get("pr_pos", np.nan)
         rows.append({
             "rider_name": rider,
             "constructor_name": const,
@@ -135,7 +166,10 @@ def build_upcoming_race(df_ml, grid_df, circuit_name, session_type="RAC", is_wet
             "constructor_last5_avg": c_hist.tail(5).mean() if len(c_hist) else np.nan,
             "circuit_dnf_rate": circ_dnf_val,
             "clean_finish_streak": trailing_clean_streak(r_hist["is_dnf"]) if len(r_hist) else 0,
-            "sprint_pos_same_weekend": r.get("sprint_pos_same_weekend", np.nan) if session_type == "RAC" else np.nan
+            "sprint_pos_same_weekend": r.get("sprint_pos_same_weekend", np.nan) if session_type == "RAC" else np.nan,
+            "fp_avg_pos": fp_avg,
+            "pr_pos": pr_pos,
+            "fp_vs_grid_delta": (fp_avg - grid) if pd.notna(fp_avg) else np.nan,
         })
     return pd.DataFrame(rows)
 
