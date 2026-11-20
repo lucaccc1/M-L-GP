@@ -26,9 +26,11 @@ class AppConfig:
     reg_max_iter: int = 250
     reg_learning_rate: float = 0.04
     reg_max_depth: int = 3
-    clf_max_iter: int = 75
+    clf_max_iter: int = 100
     clf_learning_rate: float = 0.02
     clf_max_depth: int = 2
+    clf_min_samples_leaf: int = 40
+    clf_l2_regularization: float = 2.0
     random_state: int = 42
     dnf_rank_penalty: float = 15.0
 

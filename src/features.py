@@ -70,6 +70,21 @@ def constructor_rolling_avg(df):
     c_avg["constructor_last5_avg"] = c_avg.groupby("constructor_name")["position_cleaned"].transform(lambda x: x.shift(1).rolling(5, min_periods=1).mean())
     return df.merge(c_avg[["session_id", "constructor_name", "constructor_last3_avg", "constructor_last5_avg"]], on=["session_id", "constructor_name"], how="left")
 
+def circuit_dnf_rate(df):
+    c_dnf = df.groupby(["session_id", "circuit_name", "session_type", "date"], as_index=False)["is_dnf"].mean()
+    c_dnf = c_dnf.rename(columns={"is_dnf": "session_dnf_rate"})
+    c_dnf = c_dnf.sort_values(by=["date", "session_id"]).reset_index(drop=True)
+    c_dnf["circuit_dnf_rate"] = c_dnf.groupby(["circuit_name", "session_type"])["session_dnf_rate"].transform(lambda x: x.shift(1).expanding().mean())
+    c_dnf = df.merge(c_dnf[["session_id", "circuit_dnf_rate"]], on="session_id", how="left")
+    return c_dnf
+
+def clean_finish_streak(df):
+    is_clean = (df["is_dnf"] == 0).astype(int)
+    dnf_blocks = df["is_dnf"].eq(1).groupby(df["rider_id"]).cumsum()
+    raw_streak = is_clean.groupby([df["rider_id"], dnf_blocks]).cumsum()
+    df["clean_finish_streak"] = (raw_streak.groupby(df["rider_id"]).shift(1).fillna(0).astype(int))
+    return df
+
 if __name__ == "__main__":
     df = load_data()
     df = order_by_date(df)
@@ -83,5 +98,7 @@ if __name__ == "__main__":
     df = grid_delta_gain(df)
     df = circuit_affinity(df)
     df = constructor_rolling_avg(df)
+    df = circuit_dnf_rate(df)
+    df = clean_finish_streak(df)
     os.makedirs("data/processed", exist_ok=True)
     df.to_csv("data/processed/dataset_ml.csv", index=False)

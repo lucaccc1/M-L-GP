@@ -95,16 +95,27 @@ def detect_weekend_state(df_ml):
         "sessions_to_predict": sessions_to_predict
     }
 
+def trailing_clean_streak(dnf_series):
+    streak = 0
+    for val in reversed(dnf_series.tolist()):
+        if int(val) == 0:
+            streak += 1
+        else:
+            break
+    return streak
+
 def build_upcoming_race(df_ml, grid_df, circuit_name, session_type="RAC", is_wet=0):
+    circ_sess = df_ml[df_ml["circuit_name"].str.contains(circuit_name, case=False, regex=False, na=False) & (df_ml["session_type"] == session_type)]
+    circ_dnf_val = (circ_sess.groupby("session_id", sort=False)["is_dnf"].mean().mean() if len(circ_sess) else np.nan)
     rows = []
     for _, r in grid_df.iterrows():
         rider, const, grid = r["rider_name"], r["constructor_name"], r["grid_position"]
         r_hist = df_ml[df_ml["rider_id"] == r["rider_id"]] if "rider_id" in r and pd.notna(r["rider_id"]) else df_ml[df_ml["rider_name"] == rider]
         r_rac = r_hist[r_hist["session_type"] == "RAC"]
         r_spr = r_hist[r_hist["session_type"] == "SPR"]
-        r_circ = r_hist[r_hist["circuit_name"].str.contains(circuit_name, case=False, na=False)]
+        r_circ = r_hist[r_hist["circuit_name"].str.contains(circuit_name, case=False, regex=False, na=False)]
         c_hist = df_ml[df_ml["constructor_name"] == const].groupby("session_id", sort=False)["position_cleaned"].mean()
-        c_circ = df_ml[(df_ml["constructor_name"] == const) & (df_ml["circuit_name"].str.contains(circuit_name, case=False, na=False))].groupby("session_id", sort=False)["position_cleaned"].mean()
+        c_circ = df_ml[(df_ml["constructor_name"] == const) & (df_ml["circuit_name"].str.contains(circuit_name, case=False, regex=False, na=False))].groupby("session_id", sort=False)["position_cleaned"].mean()
         rows.append({
             "rider_name": rider,
             "constructor_name": const,
@@ -122,6 +133,8 @@ def build_upcoming_race(df_ml, grid_df, circuit_name, session_type="RAC", is_wet
             "constructor_circuit_avg": c_circ.mean() if len(c_circ) else np.nan,
             "constructor_last3_avg": c_hist.tail(3).mean() if len(c_hist) else np.nan,
             "constructor_last5_avg": c_hist.tail(5).mean() if len(c_hist) else np.nan,
+            "circuit_dnf_rate": circ_dnf_val,
+            "clean_finish_streak": trailing_clean_streak(r_hist["is_dnf"]) if len(r_hist) else 0,
             "sprint_pos_same_weekend": r.get("sprint_pos_same_weekend", np.nan) if session_type == "RAC" else np.nan
         })
     return pd.DataFrame(rows)

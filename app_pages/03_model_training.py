@@ -69,7 +69,7 @@ with st.form("model_training_form"):
             help="Final unseen season evaluated after training (default: 2026). Must come after Validation year.",
         )
 
-    r1, r2, r3, d1, d2, d3 = st.columns(6)
+    r1, r2, r3 = st.columns(3)
     with r1:
         reg_max_iter = st.number_input(
             "Reg max_iter",
@@ -97,6 +97,8 @@ with st.form("model_training_form"):
             value=config.reg_max_depth,
             help="Max tree depth for the position Regressor (default: 3). Higher models complex feature interactions; lower (3–4) prevents overfitting.",
         )
+
+    d1, d2, d3, d4, d5 = st.columns(5)
     with d1:
         clf_max_iter = st.number_input(
             "DNF max_iter",
@@ -104,7 +106,7 @@ with st.form("model_training_form"):
             max_value=1000,
             value=config.clf_max_iter,
             step=25,
-            help="Boosting trees for the DNF Classifier (default: 75). Adjust while monitoring Validation DNF ROC-AUC.",
+            help="Boosting trees for the DNF Classifier (default: 100). Adjust while monitoring Validation DNF ROC-AUC and Brier Score.",
         )
     with d2:
         clf_lr = st.number_input(
@@ -124,13 +126,32 @@ with st.form("model_training_form"):
             value=config.clf_max_depth,
             help="Max tree depth for the DNF Classifier (default: 2). Shallow trees (2–3) avoid memorizing rare one-off crashes.",
         )
+    with d4:
+        clf_min_samples_leaf = st.number_input(
+            "DNF min_leaf",
+            min_value=5,
+            max_value=200,
+            value=config.clf_min_samples_leaf,
+            step=5,
+            help="Minimum samples per leaf for the DNF Classifier (default: 40). Higher values prevent small noisy leaf probabilities.",
+        )
+    with d5:
+        clf_l2_regularization = st.number_input(
+            "DNF L2 reg",
+            min_value=0.0,
+            max_value=20.0,
+            value=float(config.clf_l2_regularization),
+            step=0.5,
+            format="%.1f",
+            help="L2 regularization strength for the DNF Classifier (default: 2.0). Smooths predicted crash probabilities and improves Brier Score.",
+        )
 
     with st.expander(":material/menu_book: Parameter tuning guide", expanded=False):
         st.markdown(
             """
             - **Temporal split (`Train end year` < `Validation year` < `Test year`)**: Keeps training strictly chronological. `Validation year` is also used to measure `Residual σ`, which drives Monte Carlo variance in the Race Simulator.
             - **Position Regressor (`Reg max_iter`, `Reg lr`, `Reg max_depth`)**: Trained only on classified finishers (`is_dnf == 0`) to predict expected finishing position (`pred_pos`). Increase `max_iter` while lowering `lr` if `Val MAE` improves without hurting `Test MAE`; keep `max_depth` around `3–4` to prevent overfitting.
-            - **DNF Classifier (`DNF max_iter`, `DNF lr`, `DNF max_depth`)**: Trained on all starters to estimate retirement risk (`dnf_prob`). Since MotoGP crashes are noisy, shallow trees (`max_depth` `2–3`) and low learning rates (`0.02–0.04`) usually yield higher `DNF ROC-AUC`.
+            - **DNF Classifier (`DNF max_iter`, `DNF lr`, `DNF max_depth`, `DNF min_leaf`, `DNF L2 reg`)**: Trained on all starters to estimate retirement risk (`dnf_prob`). Since MotoGP crashes are noisy, shallow trees (`max_depth` `2`), higher `min_samples_leaf` (`40`), L2 regularization (`2.0`), and low learning rates (`0.02`) yield better ROC-AUC and Brier Score.
             """
         )
 
@@ -166,6 +187,8 @@ if train_submit:
                 "clf_max_iter": int(clf_max_iter),
                 "clf_learning_rate": float(clf_lr),
                 "clf_max_depth": int(clf_depth),
+                "clf_min_samples_leaf": int(clf_min_samples_leaf),
+                "clf_l2_regularization": float(clf_l2_regularization),
             }
         )
         new_cfg = AppConfig.from_dict(cfg_dict)
@@ -261,7 +284,7 @@ for sess_key in avail_sessions:
     test_m = sdata.get("test_metrics", {})
 
     st.markdown(f"#### :material/leaderboard: {sess_key} model benchmarks")
-    m1, m2, m3, m4 = st.columns(4)
+    m1, m2, m3, m4, m5 = st.columns(5)
     with m1:
         mae_v = val_m.get("mae")
         mae_t = test_m.get("mae")
@@ -298,6 +321,19 @@ for sess_key in avail_sessions:
             delta_arrow=auc_arrow,
         )
     with m4:
+        brier_v = val_m.get("dnf_brier")
+        brier_t = test_m.get("dnf_brier")
+        brier_color, brier_arrow = _benchmark_delta_style(
+            brier_v, brier_t, higher_is_better=False, decimals=3
+        )
+        st.metric(
+            f"{sess_key} DNF Brier",
+            f"{brier_v:.3f}" if brier_v is not None else "N/A",
+            delta=f"Test: {brier_t:.3f}" if brier_t is not None else "No test data",
+            delta_color=brier_color,
+            delta_arrow=brier_arrow,
+        )
+    with m5:
         pod_v = val_m.get("podium_hits")
         pod_t = test_m.get("podium_hits")
         pod_color, pod_arrow = _benchmark_delta_style(

@@ -3,7 +3,7 @@ import numpy as np
 import os
 import joblib
 from sklearn.ensemble import HistGradientBoostingRegressor, HistGradientBoostingClassifier
-from sklearn.metrics import mean_absolute_error, roc_auc_score
+from sklearn.metrics import mean_absolute_error, roc_auc_score, brier_score_loss
 
 def load_dataset(session_type="RAC"):
     df = pd.read_csv("data/processed/dataset_ml.csv", low_memory=False)
@@ -16,7 +16,7 @@ def split_data(df):
     return train, val, test
 
 def get_features_target(df, session_type):
-    base_cols = ["grid_position", "is_front_row", "is_wet", "rider_last3_avg", "rider_last5_avg", "dnf_ratio_last5", "dnf_ratio_last10", "rider_avg_gain", "rider_circuit_avg", "constructor_circuit_avg", "constructor_last3_avg", "constructor_last5_avg"]
+    base_cols = ["grid_position", "is_front_row", "is_wet", "rider_last3_avg", "rider_last5_avg", "dnf_ratio_last5", "dnf_ratio_last10", "rider_avg_gain", "rider_circuit_avg", "constructor_circuit_avg", "constructor_last3_avg", "constructor_last5_avg", "circuit_dnf_rate", "clean_finish_streak"]
     if session_type == "RAC":
         cols = base_cols + ["rider_last3_avg_rac", "sprint_pos_same_weekend"]
     elif session_type == "SPR":
@@ -28,10 +28,10 @@ def get_features_target(df, session_type):
 def train_models(df_train, session_type):
     train_fin = df_train[df_train["is_dnf"] == 0].reset_index(drop=True)
     X_fin, y_fin, _ = get_features_target(train_fin, session_type)
-    reg = HistGradientBoostingRegressor(max_iter=200, learning_rate=0.05, max_depth=4, random_state=42)
+    reg = HistGradientBoostingRegressor(max_iter=250, learning_rate=0.04, max_depth=3, random_state=42)
     reg.fit(X_fin, y_fin)
     X_all, _, y_dnf = get_features_target(df_train, session_type)
-    clf = HistGradientBoostingClassifier(max_iter=150, learning_rate=0.05, max_depth=3, random_state=42)
+    clf = HistGradientBoostingClassifier(max_iter=100, learning_rate=0.02, max_depth=2, min_samples_leaf=40, l2_regularization=2.0, random_state=42)
     clf.fit(X_all, y_dnf)
     return reg, clf
 
@@ -44,11 +44,12 @@ def evaluate(reg, clf, df_eval, session_type, label="Validation"):
     X_all, _, y_dnf = get_features_target(df_eval, session_type)
     dnf_probs = clf.predict_proba(X_all)[:, 1]
     auc = roc_auc_score(y_dnf, dnf_probs)
+    brier = brier_score_loss(y_dnf, dnf_probs)
     eval_df = df_eval[["session_id", "rider_name", "position_cleaned"]].copy()
     eval_df["pred_score"] = reg.predict(X_all) + dnf_probs * 15.0
     eval_df["pred_rank"] = eval_df.groupby("session_id")["pred_score"].rank(method="first")
     podium_hits = [len(set(g[g["position_cleaned"] <= 3]["rider_name"]) & set(g[g["pred_rank"] <= 3]["rider_name"])) for _, g in eval_df.groupby("session_id")]
-    print(f"[{label}] MAE (arrivati): {mae:.2f} | Std Dev: {std_dev:.2f} | DNF AUC: {auc:.3f} | Podi: {np.mean(podium_hits):.2f}/3")
+    print(f"[{label}] MAE (arrivati): {mae:.2f} | Std Dev: {std_dev:.2f} | DNF AUC: {auc:.3f} | DNF Brier: {brier:.3f} | Podi: {np.mean(podium_hits):.2f}/3")
     return std_dev
 
 def save_bundle(reg, clf, std_dev, session_type):

@@ -17,7 +17,7 @@ from sklearn.ensemble import (
     HistGradientBoostingRegressor,
 )
 from sklearn.inspection import permutation_importance
-from sklearn.metrics import mean_absolute_error, roc_auc_score
+from sklearn.metrics import brier_score_loss, mean_absolute_error, roc_auc_score
 
 from utils.config import AppConfig
 
@@ -157,6 +157,8 @@ def execute_features(
         ("grid_delta_gain", feat.grid_delta_gain),
         ("circuit_affinity", feat.circuit_affinity),
         ("constructor_rolling_avg", feat.constructor_rolling_avg),
+        ("circuit_dnf_rate", feat.circuit_dnf_rate),
+        ("clean_finish_streak", feat.clean_finish_streak),
     ]
 
     df = None
@@ -200,6 +202,7 @@ def _safe_evaluate_split(
             "mae": None,
             "std_dev": None,
             "dnf_auc": None,
+            "dnf_brier": None,
             "podium_hits": None,
             "predictions": [],
         }
@@ -217,6 +220,7 @@ def _safe_evaluate_split(
     X_all, _, y_dnf = train_mod.get_features_target(df_eval, session_type)
     dnf_probs = clf.predict_proba(X_all)[:, 1]
     auc = float(roc_auc_score(y_dnf, dnf_probs)) if y_dnf.nunique() > 1 else None
+    brier = float(brier_score_loss(y_dnf, dnf_probs)) if len(y_dnf) > 0 else None
 
     eval_cols = [
         c
@@ -251,9 +255,10 @@ def _safe_evaluate_split(
     mae_str = f"{mae:.2f}" if mae is not None else "N/A"
     std_str = f"{std_dev:.2f}" if std_dev is not None else "N/A"
     auc_str = f"{auc:.3f}" if auc is not None else "N/A"
+    brier_str = f"{brier:.3f}" if brier is not None else "N/A"
     pod_str = f"{avg_podium_hits:.2f}/3" if avg_podium_hits is not None else "N/A"
     log(
-        f"[{label}] MAE (arrivati): {mae_str} | Std Dev: {std_str} | DNF AUC: {auc_str} | Podi: {pod_str}"
+        f"[{label}] MAE (arrivati): {mae_str} | Std Dev: {std_str} | DNF AUC: {auc_str} | DNF Brier: {brier_str} | Podi: {pod_str}"
     )
 
     return {
@@ -263,6 +268,7 @@ def _safe_evaluate_split(
         "mae": round(mae, 4) if mae is not None else None,
         "std_dev": round(std_dev, 4) if std_dev is not None else None,
         "dnf_auc": round(auc, 4) if auc is not None else None,
+        "dnf_brier": round(brier, 5) if brier is not None else None,
         "podium_hits": round(avg_podium_hits, 4)
         if avg_podium_hits is not None
         else None,
@@ -346,12 +352,14 @@ def execute_training(
         and config.train_end_year == 2024
         and config.val_year == 2025
         and config.test_year == 2026
-        and config.reg_max_iter == 200
-        and config.reg_learning_rate == 0.05
-        and config.reg_max_depth == 4
-        and config.clf_max_iter == 150
-        and config.clf_learning_rate == 0.05
-        and config.clf_max_depth == 3
+        and config.reg_max_iter == 250
+        and config.reg_learning_rate == 0.04
+        and config.reg_max_depth == 3
+        and config.clf_max_iter == 100
+        and config.clf_learning_rate == 0.02
+        and config.clf_max_depth == 2
+        and config.clf_min_samples_leaf == 40
+        and config.clf_l2_regularization == 2.0
     )
 
     total = max(len(sessions_to_train), 1)
@@ -395,6 +403,8 @@ def execute_training(
                 max_iter=config.clf_max_iter,
                 learning_rate=config.clf_learning_rate,
                 max_depth=config.clf_max_depth,
+                min_samples_leaf=config.clf_min_samples_leaf,
+                l2_regularization=config.clf_l2_regularization,
                 random_state=config.random_state,
             )
             clf.fit(X_all, y_dnf)
