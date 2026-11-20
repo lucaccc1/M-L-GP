@@ -77,7 +77,7 @@ with st.form("model_training_form"):
             max_value=1000,
             value=config.reg_max_iter,
             step=25,
-            help="Boosting trees for the finishing-position Regressor (default: 250). Higher captures finer pace patterns but can overfit if lr is high.",
+            help="Boosting trees for the finishing-position Regressor (default: 300). Higher captures finer pace patterns but can overfit if lr is high.",
         )
     with r2:
         reg_lr = st.number_input(
@@ -85,9 +85,9 @@ with st.form("model_training_form"):
             min_value=0.005,
             max_value=0.5,
             value=float(config.reg_learning_rate),
-            step=0.01,
+            step=0.005,
             format="%.3f",
-            help="Learning rate for the position Regressor (default: 0.040). Lower values (0.02–0.04) smooth updates and pair well with higher max_iter.",
+            help="Learning rate for the position Regressor (default: 0.030). Lower values (0.02–0.04) smooth updates and pair well with higher max_iter.",
         )
     with r3:
         reg_depth = st.number_input(
@@ -106,7 +106,7 @@ with st.form("model_training_form"):
             max_value=1000,
             value=config.clf_max_iter,
             step=25,
-            help="Boosting trees for the DNF Classifier (default: 100). Adjust while monitoring Validation DNF ROC-AUC and Brier Score.",
+            help="Boosting trees for the DNF Classifier (default: 75). Adjust while monitoring Validation DNF ROC-AUC and Brier Score.",
         )
     with d2:
         clf_lr = st.number_input(
@@ -114,9 +114,9 @@ with st.form("model_training_form"):
             min_value=0.005,
             max_value=0.5,
             value=float(config.clf_learning_rate),
-            step=0.01,
+            step=0.005,
             format="%.3f",
-            help="Learning rate for the DNF Classifier (default: 0.020). Smaller values keep crash probabilities better calibrated.",
+            help="Learning rate for the DNF Classifier (default: 0.015). Smaller values keep crash probabilities better calibrated.",
         )
     with d3:
         clf_depth = st.number_input(
@@ -133,7 +133,7 @@ with st.form("model_training_form"):
             max_value=200,
             value=config.clf_min_samples_leaf,
             step=5,
-            help="Minimum samples per leaf for the DNF Classifier (default: 40). Higher values prevent small noisy leaf probabilities.",
+            help="Minimum samples per leaf for the DNF Classifier (default: 60). Higher values prevent small noisy leaf probabilities.",
         )
     with d5:
         clf_l2_regularization = st.number_input(
@@ -143,15 +143,15 @@ with st.form("model_training_form"):
             value=float(config.clf_l2_regularization),
             step=0.5,
             format="%.1f",
-            help="L2 regularization strength for the DNF Classifier (default: 2.0). Smooths predicted crash probabilities and improves Brier Score.",
+            help="L2 regularization strength for the DNF Classifier (default: 5.0). Smooths predicted crash probabilities and improves Brier Score.",
         )
 
     with st.expander(":material/menu_book: Parameter tuning guide", expanded=False):
         st.markdown(
             """
             - **Temporal split (`Train end year` < `Validation year` < `Test year`)**: Keeps training strictly chronological. `Validation year` is also used to measure `Residual σ`, which drives Monte Carlo variance in the Race Simulator.
-            - **Position Regressor (`Reg max_iter`, `Reg lr`, `Reg max_depth`)**: Trained only on classified finishers (`is_dnf == 0`) to predict expected finishing position (`pred_pos`). Increase `max_iter` while lowering `lr` if `Val MAE` improves without hurting `Test MAE`; keep `max_depth` around `3–4` to prevent overfitting.
-            - **DNF Classifier (`DNF max_iter`, `DNF lr`, `DNF max_depth`, `DNF min_leaf`, `DNF L2 reg`)**: Trained on all starters to estimate retirement risk (`dnf_prob`). Since MotoGP crashes are noisy, shallow trees (`max_depth` `2`), higher `min_samples_leaf` (`40`), L2 regularization (`2.0`), and low learning rates (`0.02`) yield better ROC-AUC and Brier Score.
+            - **Position Regressor (`Reg max_iter`, `Reg lr`, `Reg max_depth`)**: Trained only on classified finishers (`is_dnf == 0`) to predict expected finishing position (`pred_pos`). Defaults: `300` / `0.030` / `3`.
+            - **DNF Classifier (`DNF max_iter`, `DNF lr`, `DNF max_depth`, `DNF min_leaf`, `DNF L2 reg`)**: Trained on all starters to estimate retirement risk (`dnf_prob`). Defaults: `75` / `0.015` / `2` / `60` / `5.0`.
             """
         )
 

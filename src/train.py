@@ -25,14 +25,18 @@ def get_features_target(df, session_type):
         raise ValueError("invalid session type")
     return df[cols], df["position_cleaned"], df["is_dnf"]
 
+def get_dnf_features(df):
+    dnf_cols = ["grid_position", "is_front_row", "is_wet", "dnf_ratio_last5", "dnf_ratio_last10", "rider_avg_gain", "constructor_circuit_avg", "constructor_last5_avg", "circuit_dnf_rate", "clean_finish_streak", "fp_vs_grid_delta"]
+    return df[dnf_cols], df["is_dnf"]
+
 def train_models(df_train, session_type):
     train_fin = df_train[df_train["is_dnf"] == 0].reset_index(drop=True)
     X_fin, y_fin, _ = get_features_target(train_fin, session_type)
-    reg = HistGradientBoostingRegressor(max_iter=250, learning_rate=0.04, max_depth=3, random_state=42)
+    reg = HistGradientBoostingRegressor(max_iter=300, learning_rate=0.03, max_depth=3, random_state=42)
     reg.fit(X_fin, y_fin)
-    X_all, _, y_dnf = get_features_target(df_train, session_type)
-    clf = HistGradientBoostingClassifier(max_iter=100, learning_rate=0.02, max_depth=2, min_samples_leaf=40, l2_regularization=2.0, random_state=42)
-    clf.fit(X_all, y_dnf)
+    X_dnf, y_dnf = get_dnf_features(df_train)
+    clf = HistGradientBoostingClassifier(max_iter=75, learning_rate=0.015, max_depth=2, min_samples_leaf=60, l2_regularization=5.0, random_state=42)
+    clf.fit(X_dnf, y_dnf)
     return reg, clf
 
 def evaluate(reg, clf, df_eval, session_type, label="Validation"):
@@ -41,12 +45,13 @@ def evaluate(reg, clf, df_eval, session_type, label="Validation"):
     preds_fin = reg.predict(X_fin)
     mae = mean_absolute_error(y_fin, preds_fin)
     std_dev = float(np.std(y_fin - preds_fin))
-    X_all, _, y_dnf = get_features_target(df_eval, session_type)
-    dnf_probs = clf.predict_proba(X_all)[:, 1]
+    X_reg_all, _, _ = get_features_target(df_eval, session_type)
+    X_dnf, y_dnf = get_dnf_features(df_eval)
+    dnf_probs = clf.predict_proba(X_dnf)[:, 1]
     auc = roc_auc_score(y_dnf, dnf_probs)
     brier = brier_score_loss(y_dnf, dnf_probs)
     eval_df = df_eval[["session_id", "rider_name", "position_cleaned"]].copy()
-    eval_df["pred_score"] = reg.predict(X_all) + dnf_probs * 15.0
+    eval_df["pred_score"] = reg.predict(X_reg_all) + dnf_probs * 15.0
     eval_df["pred_rank"] = eval_df.groupby("session_id")["pred_score"].rank(method="first")
     podium_hits = [len(set(g[g["position_cleaned"] <= 3]["rider_name"]) & set(g[g["pred_rank"] <= 3]["rider_name"])) for _, g in eval_df.groupby("session_id")]
     print(f"[{label}] MAE (arrivati): {mae:.2f} | Std Dev: {std_dev:.2f} | DNF AUC: {auc:.3f} | DNF Brier: {brier:.3f} | Podi: {np.mean(podium_hits):.2f}/3")

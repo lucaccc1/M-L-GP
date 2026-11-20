@@ -219,7 +219,13 @@ def _safe_evaluate_split(
         std_dev = None
 
     X_all, _, y_dnf = train_mod.get_features_target(df_eval, session_type)
-    dnf_probs = clf.predict_proba(X_all)[:, 1]
+    if hasattr(clf, "feature_names_in_"):
+        X_clf = df_eval[list(clf.feature_names_in_)]
+    elif hasattr(train_mod, "get_dnf_features"):
+        X_clf, y_dnf = train_mod.get_dnf_features(df_eval)
+    else:
+        X_clf = X_all
+    dnf_probs = clf.predict_proba(X_clf)[:, 1]
     auc = float(roc_auc_score(y_dnf, dnf_probs)) if y_dnf.nunique() > 1 else None
     brier = float(brier_score_loss(y_dnf, dnf_probs)) if len(y_dnf) > 0 else None
 
@@ -291,6 +297,12 @@ def _compute_importances(
     eval_fin = df_eval[df_eval["is_dnf"] == 0].reset_index(drop=True)
     X_fin, y_fin, _ = train_mod.get_features_target(eval_fin, session_type)
     X_all, _, y_dnf = train_mod.get_features_target(df_eval, session_type)
+    if hasattr(clf, "feature_names_in_"):
+        X_clf = df_eval[list(clf.feature_names_in_)]
+    elif hasattr(train_mod, "get_dnf_features"):
+        X_clf, y_dnf = train_mod.get_dnf_features(df_eval)
+    else:
+        X_clf = X_all
 
     reg_imp = (
         permutation_importance(
@@ -307,20 +319,21 @@ def _compute_importances(
     clf_imp = (
         permutation_importance(
             clf,
-            X_all,
+            X_clf,
             y_dnf,
             scoring="roc_auc",
             n_repeats=5,
             random_state=random_state,
         ).importances_mean
         if len(df_eval) >= 10 and y_dnf.nunique() > 1
-        else np.zeros(X_all.shape[1])
+        else np.zeros(X_clf.shape[1])
     )
+    clf_imp_map = dict(zip(X_clf.columns, clf_imp))
     records = [
         {
             "feature": feat,
             "reg_importance": round(float(reg_imp[idx]), 5),
-            "clf_importance": round(float(clf_imp[idx]), 5),
+            "clf_importance": round(float(clf_imp_map.get(feat, 0.0)), 5),
         }
         for idx, feat in enumerate(X_all.columns)
     ]
@@ -353,14 +366,14 @@ def execute_training(
         and config.train_end_year == 2024
         and config.val_year == 2025
         and config.test_year == 2026
-        and config.reg_max_iter == 250
-        and config.reg_learning_rate == 0.04
+        and config.reg_max_iter == 300
+        and config.reg_learning_rate == 0.03
         and config.reg_max_depth == 3
-        and config.clf_max_iter == 100
-        and config.clf_learning_rate == 0.02
+        and config.clf_max_iter == 75
+        and config.clf_learning_rate == 0.015
         and config.clf_max_depth == 2
-        and config.clf_min_samples_leaf == 40
-        and config.clf_l2_regularization == 2.0
+        and config.clf_min_samples_leaf == 60
+        and config.clf_l2_regularization == 5.0
     )
 
     total = max(len(sessions_to_train), 1)
@@ -399,7 +412,10 @@ def execute_training(
             )
             reg.fit(X_fin, y_fin)
 
-            X_all, _, y_dnf = train_mod.get_features_target(train_df, session_type)
+            if hasattr(train_mod, "get_dnf_features"):
+                X_dnf, y_dnf = train_mod.get_dnf_features(train_df)
+            else:
+                X_dnf, _, y_dnf = train_mod.get_features_target(train_df, session_type)
             clf = HistGradientBoostingClassifier(
                 max_iter=config.clf_max_iter,
                 learning_rate=config.clf_learning_rate,
@@ -408,7 +424,7 @@ def execute_training(
                 l2_regularization=config.clf_l2_regularization,
                 random_state=config.random_state,
             )
-            clf.fit(X_all, y_dnf)
+            clf.fit(X_dnf, y_dnf)
 
         val_metrics = _safe_evaluate_split(
             reg,

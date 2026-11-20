@@ -175,10 +175,11 @@ def build_upcoming_race(df_ml, grid_df, circuit_name, session_type="RAC", is_wet
 
 def predict_session(df_session, bundle):
     reg, clf = bundle["reg"], bundle["clf"]
-    cols = list(reg.feature_names_in_)
+    reg_cols = list(reg.feature_names_in_)
+    clf_cols = list(clf.feature_names_in_)
     df_out = df_session.copy()
-    df_out["pred_pos"] = np.clip(reg.predict(df_out[cols]), 1.0, 22.0)
-    df_out["dnf_prob"] = clf.predict_proba(df_out[cols])[:, 1]
+    df_out["pred_pos"] = np.clip(reg.predict(df_out[reg_cols]), 1.0, 22.0)
+    df_out["dnf_prob"] = clf.predict_proba(df_out[clf_cols])[:, 1]
     return df_out
 
 def simulate_race(df_pred, std_dev, n_sims=10000):
