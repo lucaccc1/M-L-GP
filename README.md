@@ -67,10 +67,3 @@ pip install -r requirements.txt
 ### Author
 
 Created by **Luca**, built to combine motorsport domain knowledge, leak free time series feature engineering, and probabilistic race simulation into a clean, reproducible Python pipeline.
-
-## Roadmap
-
-- **Production Full-History Training (`src/train.py --full`):** estimate `std_dev` via temporal validation first, then retrain `reg` and `clf` on 100% of historical seasons (including 2025–2026), wired to the UI retrain button.
-- **DNF Classifier Enhancements:** compute leak-free circuit-specific retirement rates (`circuit_dnf_rate` with `.shift(1)`), add weekend form/risk signals (FP/PR-to-Qualifying delta or consecutive finish streak), and benchmark `ROC-AUC` & `Brier Score` improvements.
-- **Free Practice Pace & Regressor Tuning:** extract race/qualifying pace signals from `FP` and `PR` sessions in `data/raw/results.csv`, and optimize `HistGradientBoostingRegressor` (`max_depth`, `min_samples_leaf`, `l2_regularization`) on 2025/2026 validation.
-- **Probabilistic Backtesting & Forecast Archiving (`src/evaluate_history.py`):** evaluate `Brier Score` and Monte Carlo probability calibration across 2025–2026 races, and auto-save pre-race forecasts in `predictions/<date>_<circuit>_<session>.csv` for post-race comparison in the UI.
