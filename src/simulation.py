@@ -143,8 +143,8 @@ def build_upcoming_race(df_ml, grid_df, circuit_name, session_type="RAC", is_wet
         r_rac = r_hist[r_hist["session_type"] == "RAC"]
         r_spr = r_hist[r_hist["session_type"] == "SPR"]
         r_circ = r_hist[r_hist["circuit_name"].str.contains(circuit_name, case=False, regex=False, na=False)]
-        c_hist = df_ml[df_ml["constructor_name"] == const].groupby("session_id", sort=False)["position_cleaned"].mean()
-        c_circ = df_ml[(df_ml["constructor_name"] == const) & (df_ml["circuit_name"].str.contains(circuit_name, case=False, regex=False, na=False))].groupby("session_id", sort=False)["position_cleaned"].mean()
+        c_hist = df_ml[df_ml["constructor_name"] == const].groupby("session_id", sort=False)["finish_pos"].mean()
+        c_circ = df_ml[(df_ml["constructor_name"] == const) & (df_ml["circuit_name"].str.contains(circuit_name, case=False, regex=False, na=False))].groupby("session_id", sort=False)["finish_pos"].mean()
         fp_avg = r.get("fp_avg_pos", np.nan)
         pr_pos = r.get("pr_pos", np.nan)
         rows.append({
@@ -153,14 +153,14 @@ def build_upcoming_race(df_ml, grid_df, circuit_name, session_type="RAC", is_wet
             "grid_position": grid,
             "is_front_row": 1 if grid <= 3 else 0,
             "is_wet": is_wet,
-            "rider_last3_avg": r_hist["position_cleaned"].tail(3).mean() if len(r_hist) else np.nan,
-            "rider_last5_avg": r_hist["position_cleaned"].tail(5).mean() if len(r_hist) else np.nan,
-            "rider_last3_avg_rac": r_rac["position_cleaned"].tail(3).mean() if len(r_rac) else np.nan,
-            "rider_last3_avg_spr": r_spr["position_cleaned"].tail(3).mean() if len(r_spr) else np.nan,
+            "rider_last3_avg": r_hist["finish_pos"].tail(3).mean() if len(r_hist) else np.nan,
+            "rider_last5_avg": r_hist["finish_pos"].tail(5).mean() if len(r_hist) else np.nan,
+            "rider_last3_avg_rac": r_rac["finish_pos"].tail(3).mean() if len(r_rac) else np.nan,
+            "rider_last3_avg_spr": r_spr["finish_pos"].tail(3).mean() if len(r_spr) else np.nan,
             "dnf_ratio_last5": r_hist["is_dnf"].tail(5).mean() if len(r_hist) else np.nan,
             "dnf_ratio_last10": r_hist["is_dnf"].tail(10).mean() if len(r_hist) else np.nan,
             "rider_avg_gain": r_hist["grid_delta"].tail(5).mean() if len(r_hist) else np.nan,
-            "rider_circuit_avg": r_circ["position_cleaned"].mean() if len(r_circ) else np.nan,
+            "rider_circuit_avg": r_circ["finish_pos"].mean() if len(r_circ) else np.nan,
             "constructor_circuit_avg": c_circ.mean() if len(c_circ) else np.nan,
             "constructor_last3_avg": c_hist.tail(3).mean() if len(c_hist) else np.nan,
             "constructor_last5_avg": c_hist.tail(5).mean() if len(c_hist) else np.nan,

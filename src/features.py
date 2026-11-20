@@ -15,23 +15,24 @@ def order_by_date(df):
     return df.sort_values(by=["date", "session_id", "grid_position"]).reset_index(drop=True)
 
 def grid_delta(df):
-    df["grid_delta"] = df["grid_position"] - df["position_cleaned"]
+    df["finish_pos"] = np.where(df["is_dnf"] == 0, df["position_cleaned"], np.nan)
+    df["grid_delta"] = df["grid_position"] - df["finish_pos"]
     df["is_front_row"] = np.where(df["grid_position"] <= 3, 1, 0)
     return df
 
 def rider_last3_avg(df):
-    df["rider_last3_avg"] = df.groupby("rider_id")["position_cleaned"].transform(lambda x: x.shift(1).rolling(3, min_periods=1).mean())
+    df["rider_last3_avg"] = df.groupby("rider_id")["finish_pos"].transform(lambda x: x.shift(1).rolling(3, min_periods=1).mean())
     return df
 
 def rider_last5_avg(df):
-    df["rider_last5_avg"] = df.groupby("rider_id")["position_cleaned"].transform(lambda x: x.shift(1).rolling(5, min_periods=1).mean())
+    df["rider_last5_avg"] = df.groupby("rider_id")["finish_pos"].transform(lambda x: x.shift(1).rolling(5, min_periods=1).mean())
     return df
 
 def rider_session_avg(df):
     rac = df[df["session_type"] == "RAC"].copy()
-    rac["rider_last3_avg_rac"] = rac.groupby("rider_id")["position_cleaned"].transform(lambda x: x.shift(1).rolling(3, min_periods=1).mean())
+    rac["rider_last3_avg_rac"] = rac.groupby("rider_id")["finish_pos"].transform(lambda x: x.shift(1).rolling(3, min_periods=1).mean())
     spr = df[df["session_type"] == "SPR"].copy()
-    spr["rider_last3_avg_spr"] = spr.groupby("rider_id")["position_cleaned"].transform(lambda x: x.shift(1).rolling(3, min_periods=1).mean())
+    spr["rider_last3_avg_spr"] = spr.groupby("rider_id")["finish_pos"].transform(lambda x: x.shift(1).rolling(3, min_periods=1).mean())
     df = df.merge(rac[["session_id", "rider_id", "rider_last3_avg_rac"]], on=["session_id", "rider_id"], how="left")
     df = df.merge(spr[["session_id", "rider_id", "rider_last3_avg_spr"]], on=["session_id", "rider_id"], how="left")
     return df
@@ -57,17 +58,17 @@ def grid_delta_gain(df):
     return df
 
 def circuit_affinity(df):
-    df["rider_circuit_avg"] = df.groupby(["rider_id", "circuit_name"])["position_cleaned"].transform(lambda x: x.shift(1).expanding().mean())
-    c_circ = df.groupby(["session_id", "circuit_name", "constructor_name", "date"])["position_cleaned"].mean().reset_index()
+    df["rider_circuit_avg"] = df.groupby(["rider_id", "circuit_name"])["finish_pos"].transform(lambda x: x.shift(1).expanding().mean())
+    c_circ = df.groupby(["session_id", "circuit_name", "constructor_name", "date"])["finish_pos"].mean().reset_index()
     c_circ = c_circ.sort_values(by=["date", "session_id"]).reset_index(drop=True)
-    c_circ["constructor_circuit_avg"] = c_circ.groupby(["constructor_name", "circuit_name"])["position_cleaned"].transform(lambda x: x.shift(1).expanding().mean())
+    c_circ["constructor_circuit_avg"] = c_circ.groupby(["constructor_name", "circuit_name"])["finish_pos"].transform(lambda x: x.shift(1).expanding().mean())
     return df.merge(c_circ[["session_id", "constructor_name", "constructor_circuit_avg"]], on=["session_id", "constructor_name"], how="left")
 
 def constructor_rolling_avg(df):
-    c_avg = df.groupby(["session_id", "constructor_name", "date"])["position_cleaned"].mean().reset_index()
+    c_avg = df.groupby(["session_id", "constructor_name", "date"])["finish_pos"].mean().reset_index()
     c_avg = c_avg.sort_values(by=["date", "session_id"]).reset_index(drop=True)
-    c_avg["constructor_last3_avg"] = c_avg.groupby("constructor_name")["position_cleaned"].transform(lambda x: x.shift(1).rolling(3, min_periods=1).mean())
-    c_avg["constructor_last5_avg"] = c_avg.groupby("constructor_name")["position_cleaned"].transform(lambda x: x.shift(1).rolling(5, min_periods=1).mean())
+    c_avg["constructor_last3_avg"] = c_avg.groupby("constructor_name")["finish_pos"].transform(lambda x: x.shift(1).rolling(3, min_periods=1).mean())
+    c_avg["constructor_last5_avg"] = c_avg.groupby("constructor_name")["finish_pos"].transform(lambda x: x.shift(1).rolling(5, min_periods=1).mean())
     return df.merge(c_avg[["session_id", "constructor_name", "constructor_last3_avg", "constructor_last5_avg"]], on=["session_id", "constructor_name"], how="left")
 
 def circuit_dnf_rate(df):
