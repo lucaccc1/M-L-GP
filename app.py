@@ -73,7 +73,7 @@ _CHROME_CSS = """
 }
 [data-testid="stMainBlockContainer"],
 .stMainBlockContainer {
-    padding-top: 2.5rem !important;
+    padding-top: 4.5rem !important;
 }
 .st-key-top_header_shell,
 .st-key-top_header_shell[data-testid="stVerticalBlock"],
