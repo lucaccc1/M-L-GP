@@ -404,19 +404,18 @@ else:
         if not imps:
             st.info("Feature importances not available.", title="No importances")
         else:
-            ic1, ic2 = st.columns(2)
-            with ic1:
-                st.altair_chart(
-                    feature_importance_chart(imps, "reg_importance"),
-                    width="stretch",
-                    alt="Horizontal bar chart of regressor permutation feature importances",
-                )
-            with ic2:
-                st.altair_chart(
-                    feature_importance_chart(imps, "clf_importance"),
-                    width="stretch",
-                    alt="Horizontal bar chart of DNF classifier permutation feature importances",
-                )
+            st.markdown("##### Position Regressor — feature importance (MAE impact)")
+            st.altair_chart(
+                feature_importance_chart(imps, "reg_importance"),
+                width="stretch",
+                alt="Horizontal bar chart of regressor permutation feature importances",
+            )
+            st.markdown("##### DNF Classifier — feature importance (ROC-AUC impact)")
+            st.altair_chart(
+                feature_importance_chart(imps, "clf_importance"),
+                width="stretch",
+                alt="Horizontal bar chart of DNF classifier permutation feature importances",
+            )
     else:
         if not preds:
             st.info(f"No evaluation records in {chosen_split} split for {chosen_sess}.", title="Empty split")

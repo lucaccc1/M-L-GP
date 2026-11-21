@@ -13,7 +13,7 @@ CONSTRUCTOR_BRAND_COLORS: list[tuple[str, str]] = [
     ("aprilia", "#9333EA"),    # Viola Aprilia
     ("ktm", "#FF7A00"),        # Arancione KTM
     ("yamaha", "#2563EB"),     # Blu Yamaha
-    ("honda", "#E23D10"),      # Arancione scuro Honda (più scuro di KTM)
+    ("honda", "#E23D10"),      # Arancione scuro Honda (Repsol / HRC)
     ("suzuki", "#06B6D4"),     # Azzurro Suzuki Ecstar
     ("gasgas", "#BE123C"),     # Cremisi GASGAS
     ("kawasaki", "#16A34A"),   # Verde Kawasaki
@@ -303,16 +303,21 @@ def feature_importance_chart(
 
     chart = (
         alt.Chart(df_i)
-        .mark_bar(cornerRadiusTopRight=4, cornerRadiusBottomRight=4, color=color_hex)
+        .mark_bar(size=18, cornerRadiusTopRight=4, cornerRadiusBottomRight=4, color=color_hex)
         .encode(
             x=alt.X(f"{target}:Q", title=title),
-            y=alt.Y("feature:N", sort="-x", title=None),
+            y=alt.Y(
+                "feature:N",
+                sort="-x",
+                title=None,
+                axis=alt.Axis(labelLimit=280, labelFontSize=12),
+            ),
             tooltip=[
                 alt.Tooltip("feature:N", title="Feature"),
                 alt.Tooltip(f"{target}:Q", title="Importance", format=".4f"),
             ],
         )
-        .properties(height=360)
+        .properties(height=max(560, len(df_i) * 30))
     )
     return chart
 
@@ -478,3 +483,198 @@ def backtest_comparison_chart(sim_df: pd.DataFrame) -> alt.Chart:
         .encode(x="x:Q", y="y:Q")
     )
     return (points + diag).properties(height=340).interactive()
+
+
+def h2h_outcome_bar_chart(
+    outcome_breakdown: list[dict], rider_a: str, rider_b: str
+) -> alt.Chart:
+    """100% stacked horizontal bar breaking down Monte Carlo H2H duel outcomes."""
+    df_o = pd.DataFrame(outcome_breakdown)
+    if df_o.empty:
+        return alt.Chart(pd.DataFrame({"x": [], "y": []})).mark_bar()
+
+    df_o = df_o.sort_values("order").reset_index(drop=True)
+    total_pct = float(df_o["pct"].sum()) or 100.0
+    x0_list: list[float] = []
+    x1_list: list[float] = []
+    x_mid_list: list[float] = []
+    cum = 0.0
+    for pct in df_o["pct"]:
+        frac = float(pct) / total_pct
+        x0_list.append(cum)
+        x1_list.append(cum + frac)
+        x_mid_list.append(cum + frac / 2.0)
+        cum += frac
+
+    df_o["x0"] = x0_list
+    df_o["x1"] = x1_list
+    df_o["x_mid"] = x_mid_list
+    df_o["row"] = "Duel"
+    df_o["pct_label"] = df_o["pct"].map(lambda v: f"{v:.1f}%")
+
+    domain = [
+        f"{rider_a} ahead (pace)",
+        f"{rider_a} ahead ({rider_b} DNF)",
+        "Both DNF",
+        f"{rider_b} ahead ({rider_a} DNF)",
+        f"{rider_b} ahead (pace)",
+    ]
+    colors = ["#2563EB", "#60A5FA", "#64748B", "#FB923C", "#D90429"]
+
+    bars = (
+        alt.Chart(df_o)
+        .mark_bar(size=46, cornerRadius=3)
+        .encode(
+            x=alt.X(
+                "x0:Q",
+                title="Share of simulated races",
+                scale=alt.Scale(domain=[0, 1]),
+                axis=alt.Axis(format="%", values=[0.0, 0.2, 0.4, 0.6, 0.8, 1.0]),
+            ),
+            x2="x1:Q",
+            y=alt.Y("row:N", title=None, axis=None),
+            color=alt.Color(
+                "segment:N",
+                title="Duel outcome",
+                scale=alt.Scale(domain=domain, range=colors),
+                legend=alt.Legend(orient="top", columns=3, labelLimit=300),
+            ),
+            tooltip=[
+                alt.Tooltip("segment:N", title="Outcome"),
+                alt.Tooltip("pct:Q", title="Share (%)", format=".2f"),
+                alt.Tooltip("count:Q", title="Simulated races", format=","),
+            ],
+        )
+    )
+    labels = (
+        alt.Chart(df_o[df_o["pct"] >= 6.5])
+        .mark_text(color="#FFFFFF", fontWeight="bold", fontSize=12)
+        .encode(
+            x="x_mid:Q",
+            y=alt.Y("row:N", title=None, axis=None),
+            text="pct_label:N",
+        )
+    )
+    return (bars + labels).properties(height=210)
+
+
+def h2h_position_distribution_chart(
+    position_distribution: list[dict], rider_a: str, rider_b: str
+) -> alt.Chart:
+    """Grouped bar chart of simulated finishing position probabilities (P1..P22 + DNF)."""
+    df_d = pd.DataFrame(position_distribution)
+    if df_d.empty:
+        return alt.Chart(pd.DataFrame({"x": [], "y": []})).mark_bar()
+
+    order_labels = (
+        df_d[["position_label", "position_order"]]
+        .drop_duplicates()
+        .sort_values("position_order")["position_label"]
+        .tolist()
+    )
+
+    chart = (
+        alt.Chart(df_d)
+        .mark_bar(cornerRadiusTopLeft=3, cornerRadiusTopRight=3)
+        .encode(
+            x=alt.X(
+                "position_label:N",
+                sort=order_labels,
+                title="Simulated finishing position",
+                axis=alt.Axis(labelAngle=0),
+            ),
+            y=alt.Y("pct:Q", title="Probability (%)"),
+            xOffset="rider:N",
+            color=alt.Color(
+                "rider:N",
+                title="Rider",
+                scale=alt.Scale(domain=[rider_a, rider_b], range=["#2563EB", "#D90429"]),
+                legend=alt.Legend(orient="top"),
+            ),
+            tooltip=[
+                alt.Tooltip("rider:N", title="Rider"),
+                alt.Tooltip("position_label:N", title="Finish"),
+                alt.Tooltip("pct:Q", title="Probability (%)", format=".2f"),
+            ],
+        )
+        .properties(height=440)
+    )
+    return chart
+
+
+def h2h_recent_form_chart(
+    hist_a: pd.DataFrame,
+    hist_b: pd.DataFrame,
+    rider_a: str,
+    rider_b: str,
+    mode: str = "recent",
+) -> alt.Chart:
+    """Line chart comparing historical finishing positions (recent races or single circuit)."""
+    frames = []
+    for df_sub, name in [(hist_a, rider_a), (hist_b, rider_b)]:
+        if df_sub is None or df_sub.empty:
+            continue
+        sub = df_sub.copy()
+        sub["rider_label"] = name
+        if mode == "circuit":
+            sub["event_label"] = (
+                sub["date"].astype(str).str.slice(0, 10)
+                + " · "
+                + sub["session_type"].astype(str)
+            )
+        else:
+            sub["event_label"] = (
+                sub["date"].astype(str).str.slice(5, 10)
+                + " · "
+                + sub["circuit_name"].astype(str).str.slice(0, 12)
+            )
+        frames.append(sub)
+
+    if not frames:
+        return alt.Chart(pd.DataFrame({"x": [], "y": []})).mark_line()
+
+    combined = pd.concat(frames, ignore_index=True)
+    if "date" in combined.columns:
+        combined = combined.sort_values(by=["date", "session_id"]).reset_index(drop=True)
+
+    x_title = (
+        "Circuit races (chronological)"
+        if mode == "circuit"
+        else "Recent races (chronological)"
+    )
+
+    chart = (
+        alt.Chart(combined)
+        .mark_line(point=alt.OverlayMarkDef(size=75), strokeWidth=2.5)
+        .encode(
+            x=alt.X(
+                "event_label:N",
+                sort=None,
+                title=x_title,
+                axis=alt.Axis(labelAngle=-35, labelLimit=180),
+            ),
+            y=alt.Y(
+                "position_cleaned:Q",
+                title="Finish pos (25 = DNF)",
+                scale=alt.Scale(reverse=True, domain=[1, 25]),
+                axis=alt.Axis(values=[1, 3, 5, 10, 15, 20, 25]),
+            ),
+            color=alt.Color(
+                "rider_label:N",
+                title="Rider",
+                scale=alt.Scale(domain=[rider_a, rider_b], range=["#2563EB", "#D90429"]),
+                legend=alt.Legend(orient="top"),
+            ),
+            tooltip=[
+                alt.Tooltip("rider_label:N", title="Rider"),
+                alt.Tooltip("date:T", title="Date"),
+                alt.Tooltip("circuit_name:N", title="Circuit"),
+                alt.Tooltip("session_type:N", title="Session"),
+                alt.Tooltip("grid_position:Q", title="Grid"),
+                alt.Tooltip("position_cleaned:Q", title="Finish"),
+            ],
+        )
+        .properties(height=460)
+        .interactive()
+    )
+    return chart

@@ -39,6 +39,11 @@ pages = [
         default=True,
     ),
     st.Page(
+        "app_pages/05_rider_comparison.py",
+        title="Rider head-to-head",
+        icon=":material/compare_arrows:",
+    ),
+    st.Page(
         "app_pages/01_orchestrator.py",
         title="Pipeline orchestrator",
         icon=":material/account_tree:",
