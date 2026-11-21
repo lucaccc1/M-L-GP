@@ -180,6 +180,7 @@ with k4:
 st.divider()
 
 # --- Chart View Switcher ---
+st.markdown("#### Visual exploration")
 chart_view = st.segmented_control(
     "Visual exploration",
     options=[
@@ -188,6 +189,7 @@ chart_view = st.segmented_control(
         "Grid vs finish heatmap",
     ],
     default="Constructor trends",
+    label_visibility="collapsed",
     key="explorer_chart_view",
 )
 
