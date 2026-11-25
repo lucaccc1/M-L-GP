@@ -25,6 +25,9 @@ init_session_state()
 config = get_config()
 
 st.title(":material/model_training: Model training & diagnostics")
+st.caption(
+    "Tune temporal splits and hyperparameters for RAC and SPR pace regressors and DNF classifiers, then inspect validation/test benchmarks and feature importances."
+)
 
 dataset_exists = config.dataset_ml_csv.exists()
 bundles_exist = (

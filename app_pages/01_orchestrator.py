@@ -28,6 +28,9 @@ config = get_config()
 inventory = get_artifact_inventory(config)
 
 st.title(":material/account_tree: Pipeline orchestrator")
+st.caption(
+    "Run and monitor the end-to-end MotoGP pipeline from API ingestion and Q1/Q2 grid preprocessing to feature engineering and model training."
+)
 
 # --- Artifact readiness KPI row ---
 raw_ready = inventory["raw_results"]["exists"] and inventory["raw_sessions"]["exists"]

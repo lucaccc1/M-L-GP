@@ -26,11 +26,12 @@ from utils.head_to_head import (
 )
 from utils.pipeline_runner import safe_detect_weekend_state
 from utils.state import get_config, init_session_state
+from utils.upcoming_gp_ui import render_upcoming_gp_controls
 
 init_session_state()
 config = get_config()
 
-st.title(":material/compare_arrows: Rider head-to-head (H2H)")
+st.title(":material/compare_arrows: Rider head-to-head")
 st.caption(
     "Compare any two riders from the upcoming MotoGP weekend across 10,000+ Monte Carlo simulations, engineered pace/risk features, and historical circuit data."
 )
@@ -74,54 +75,15 @@ except Exception as exc:
     )
     st.stop()
 
-chosen_circuit = str(weekend["circuit_name"])
-
-with st.container(border=True):
-    st.markdown(
-        f"#### :material/radar: Upcoming GP: **{chosen_circuit}** ({weekend['race_date']}) · `{weekend['state']}`"
+chosen_circuit, chosen_session, weather_opt, n_sims, std_mult = (
+    render_upcoming_gp_controls(
+        weekend,
+        config,
+        rac_bundle,
+        spr_bundle,
+        key_prefix="h2h",
     )
-    c1, c2, c3, c4 = st.columns(4)
-
-    with c1:
-        sess_options = [
-            s
-            for s in weekend["sessions_to_predict"]
-            if (s == "RAC" and rac_bundle is not None)
-            or (s == "SPR" and spr_bundle is not None)
-        ]
-        if not sess_options:
-            sess_options = ["RAC"] if rac_bundle is not None else ["SPR"]
-        chosen_session = st.segmented_control(
-            "Session",
-            options=sess_options,
-            default=sess_options[-1],
-            key="h2h_session_select",
-        )
-    with c2:
-        weather_opt = st.segmented_control(
-            "Conditions",
-            options=["Dry", "Wet / Rain"],
-            default="Wet / Rain" if weekend["is_wet"] == 1 else "Dry",
-            key="h2h_weather_select",
-        )
-    with c3:
-        n_sims = st.select_slider(
-            "Monte Carlo runs",
-            options=[1000, 2500, 5000, 10000, 25000, 50000],
-            value=config.n_sims
-            if config.n_sims in [1000, 2500, 5000, 10000, 25000, 50000]
-            else 10000,
-            key="h2h_n_sims",
-        )
-    with c4:
-        std_mult = st.slider(
-            "Dispersion σ mult",
-            min_value=0.5,
-            max_value=2.0,
-            value=float(config.std_dev_multiplier),
-            step=0.05,
-            key="h2h_std_mult",
-        )
+)
 
 bundle = rac_bundle if chosen_session == "RAC" else spr_bundle
 if bundle is None:
@@ -180,6 +142,49 @@ rider_meta = {
     for _, row in sim_df.iterrows()
 }
 
+with st.container(key="h2h_card_styles"):
+    st.html(
+        """
+        <style>
+        .st-key-h2h_card_styles {
+            display: none !important;
+        }
+        .st-key-h2h_rider_a [data-testid="stWidgetLabel"] p,
+        .st-key-h2h_rider_b [data-testid="stWidgetLabel"] p {
+            font-size: 1.05rem !important;
+            font-weight: 600 !important;
+        }
+        .st-key-h2h_card_a {
+            background: linear-gradient(135deg, rgba(37, 99, 235, 0.22), rgba(37, 99, 235, 0.05)) !important;
+            border-color: rgba(59, 130, 246, 0.55) !important;
+        }
+        .st-key-h2h_card_b {
+            background: linear-gradient(135deg, rgba(217, 4, 41, 0.22), rgba(217, 4, 41, 0.05)) !important;
+            border-color: rgba(239, 68, 68, 0.55) !important;
+        }
+        .st-key-h2h_card_a h5,
+        .st-key-h2h_card_b h5 {
+            margin: 0 !important;
+            padding: 0 !important;
+            font-size: 1.15rem !important;
+            font-weight: 700 !important;
+            letter-spacing: 0.03em !important;
+        }
+        .st-key-h2h_card_a h2,
+        .st-key-h2h_card_b h2 {
+            margin: 0.1rem 0 0.25rem 0 !important;
+            padding: 0 !important;
+            font-size: 1.55rem !important;
+            font-weight: 700 !important;
+        }
+        .st-key-h2h_card_a [data-testid="stHeaderActionElements"],
+        .st-key-h2h_card_b [data-testid="stHeaderActionElements"] {
+            display: none !important;
+        }
+        </style>
+        """
+    )
+
 sel1, sel2 = st.columns(2)
 with sel1:
     rider_a = st.selectbox(
@@ -211,36 +216,10 @@ duel = compute_rider_pair_duel(sim_payload, rider_a, rider_b)
 row_a = sim_df[sim_df["rider_name"] == rider_a].iloc[0]
 row_b = sim_df[sim_df["rider_name"] == rider_b].iloc[0]
 
-with st.container(key="h2h_card_styles"):
-    st.html(
-        """
-        <style>
-        .st-key-h2h_card_styles {
-            display: none !important;
-        }
-        .st-key-h2h_card_a {
-            background: linear-gradient(135deg, rgba(37, 99, 235, 0.22), rgba(37, 99, 235, 0.05)) !important;
-            border-color: rgba(59, 130, 246, 0.55) !important;
-        }
-        .st-key-h2h_card_b {
-            background: linear-gradient(135deg, rgba(217, 4, 41, 0.22), rgba(217, 4, 41, 0.05)) !important;
-            border-color: rgba(239, 68, 68, 0.55) !important;
-        }
-        .st-key-h2h_card_a h2,
-        .st-key-h2h_card_b h2 {
-            margin: 0.1rem 0 0.25rem 0 !important;
-            padding: 0 !important;
-            font-size: 1.55rem !important;
-            font-weight: 700 !important;
-        }
-        </style>
-        """
-    )
-
 card_a, card_b = st.columns(2)
 with card_a:
     with st.container(border=True, key="h2h_card_a"):
-        st.markdown(":blue[:material/sports_motorsports: RIDER A]")
+        st.markdown("##### :blue[:material/sports_motorsports: RIDER A]")
         st.markdown(f"## {rider_a}")
         st.caption(
             f"{row_a['constructor_name']} · Grid P{int(row_a['grid_position'])} · Expected pos **{row_a['pred_pos']:.2f}**"
@@ -254,7 +233,7 @@ with card_a:
 
 with card_b:
     with st.container(border=True, key="h2h_card_b"):
-        st.markdown(":red[:material/sports_motorsports: RIDER B]")
+        st.markdown("##### :red[:material/sports_motorsports: RIDER B]")
         st.markdown(f"## {rider_b}")
         st.caption(
             f"{row_b['constructor_name']} · Grid P{int(row_b['grid_position'])} · Expected pos **{row_b['pred_pos']:.2f}**"

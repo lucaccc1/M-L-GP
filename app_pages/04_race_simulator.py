@@ -20,11 +20,15 @@ from utils.data_loaders import (
 )
 from utils.pipeline_runner import list_completed_events, safe_detect_weekend_state
 from utils.state import append_log, get_config, init_session_state, update_step_status
+from utils.upcoming_gp_ui import render_upcoming_gp_controls
 
 init_session_state()
 config = get_config()
 
 st.title(":material/flag: Race simulator & backtest")
+st.caption(
+    "Simulate upcoming MotoGP sprint and grand prix outcomes across 10,000+ Monte Carlo runs with What-If grid overrides, or backtest past weekends against actual results."
+)
 
 ml_mtime = file_mtime(config.dataset_ml_csv)
 df_ml = load_csv_cached(str(config.dataset_ml_csv), ml_mtime)
@@ -43,8 +47,10 @@ if "date" in df_ml.columns:
 
 rac_path = config.model_bundle_path("RAC")
 spr_path = config.model_bundle_path("SPR")
-rac_bundle = load_model_bundle_cached(str(rac_path), file_mtime(rac_path))
-spr_bundle = load_model_bundle_cached(str(spr_path), file_mtime(spr_path))
+rac_mtime = file_mtime(rac_path)
+spr_mtime = file_mtime(spr_path)
+rac_bundle = load_model_bundle_cached(str(rac_path), rac_mtime)
+spr_bundle = load_model_bundle_cached(str(spr_path), spr_mtime)
 
 if rac_bundle is None and spr_bundle is None:
     st.warning(
@@ -74,87 +80,23 @@ if mode == "Upcoming GP forecast":
         )
         st.stop()
 
-    state_label_map = {
-        "PRE_QUALIFYING": "Pre-Qualifying (estimated grid from last 3 events)",
-        "POST_QUALIFYING": "Post-Qualifying (official Q1/Q2 starting grid)",
-        "POST_SPRINT": "Post-Sprint (official grid + Sprint finish)",
-        "OFF_SEASON_FALLBACK": "All events finished (using latest grid fallback)",
-    }
-
-    with st.container(border=True):
-        st.markdown(
-            f"#### :material/radar: Detected GP: **{weekend['circuit_name']}** ({weekend['race_date']})"
+    chosen_circuit, chosen_session, weather_opt, n_sims, std_mult = (
+        render_upcoming_gp_controls(
+            weekend,
+            config,
+            rac_bundle,
+            spr_bundle,
+            key_prefix="sim",
         )
-        st.caption(
-            f"Weekend stage: `{weekend['state']}` — {state_label_map.get(weekend['state'], weekend['state'])}"
+    )
+
+    bundle = rac_bundle if chosen_session == "RAC" else spr_bundle
+    if bundle is None:
+        st.error(
+            f"Model bundle for {chosen_session} is not trained yet.",
+            title="Missing model",
         )
-
-        c1, c2, c3, c4 = st.columns(4)
-        avail_circuits = sorted(
-            df_ml["circuit_name"].dropna().astype(str).unique().tolist()
-        )
-        default_circ = weekend["circuit_name"]
-        if default_circ not in avail_circuits:
-            avail_circuits = [default_circ] + avail_circuits
-
-        with c1:
-            chosen_circuit = st.selectbox(
-                "Target circuit",
-                options=avail_circuits,
-                index=avail_circuits.index(default_circ),
-                key="sim_circuit_select",
-            )
-        with c2:
-            sess_options = [
-                s
-                for s in weekend["sessions_to_predict"]
-                if (s == "RAC" and rac_bundle is not None)
-                or (s == "SPR" and spr_bundle is not None)
-            ]
-            if not sess_options:
-                sess_options = ["RAC"] if rac_bundle is not None else ["SPR"]
-            chosen_session = st.segmented_control(
-                "Session to simulate",
-                options=sess_options,
-                default=sess_options[-1],
-                key="sim_session_select",
-            )
-        with c3:
-            weather_opt = st.segmented_control(
-                "Track conditions",
-                options=["Dry", "Wet / Rain"],
-                default="Wet / Rain" if weekend["is_wet"] == 1 else "Dry",
-                key="sim_weather_override",
-            )
-        with c4:
-            n_sims = st.select_slider(
-                "Monte Carlo runs",
-                options=[1000, 2500, 5000, 10000, 25000, 50000],
-                value=config.n_sims
-                if config.n_sims in [1000, 2500, 5000, 10000, 25000, 50000]
-                else 10000,
-                key="sim_n_runs",
-            )
-
-        s1, s2 = st.columns([2, 1], vertical_alignment="bottom")
-        with s1:
-            std_mult = st.slider(
-                "Dispersion σ multiplier",
-                min_value=0.5,
-                max_value=2.0,
-                value=float(config.std_dev_multiplier),
-                step=0.05,
-                key="sim_std_mult",
-                help="Scales the model's calibrated validation Residual σ used as Gaussian noise in Monte Carlo runs (default: 1.00). Lower values (< 1.00) produce tighter, favorite-heavy outcomes; higher values (> 1.00) increase race unpredictability and spread podium/win odds across the grid.",
-            )
-        with s2:
-            run_sim_btn = st.button(
-                "Run Monte Carlo simulation",
-                type="primary",
-                icon=":material/casino:",
-                width="stretch",
-                key="btn_run_upcoming_sim",
-            )
+        st.stop()
 
     edit_grid = st.toggle(
         "Enable What-If starting grid & sprint override editor",
@@ -197,16 +139,25 @@ if mode == "Upcoming GP forecast":
             alt="Editable starting grid table for What-If race simulation",
         )
 
-    if run_sim_btn or not st.session_state["last_sim_results"]:
-        bundle = rac_bundle if chosen_session == "RAC" else spr_bundle
-        if bundle is None:
-            st.error(
-                f"Model bundle for {chosen_session} is not trained yet.",
-                title="Missing model",
-            )
-            st.stop()
+    is_wet_flag = 1 if weather_opt == "Wet / Rain" else 0
+    bundle_mtime = rac_mtime if chosen_session == "RAC" else spr_mtime
+    grid_snapshot = tuple(
+        tuple(None if pd.isna(v) else v for v in row)
+        for row in grid_source_df.itertuples(index=False, name=None)
+    )
+    cache_sig = (
+        weekend["state"],
+        chosen_circuit,
+        chosen_session,
+        is_wet_flag,
+        int(n_sims),
+        round(float(std_mult), 3),
+        ml_mtime,
+        bundle_mtime,
+        grid_snapshot,
+    )
 
-        is_wet_flag = 1 if weather_opt == "Wet / Rain" else 0
+    if st.session_state["last_sim_results"].get("sig") != cache_sig:
         with st.spinner(
             f"Running {n_sims:,} Monte Carlo simulations for {chosen_session}..."
         ):
@@ -228,6 +179,7 @@ if mode == "Upcoming GP forecast":
             sim_df.insert(0, "sim_rank", range(1, len(sim_df) + 1))
 
             st.session_state["last_sim_results"] = {
+                "sig": cache_sig,
                 "circuit": chosen_circuit,
                 "session": chosen_session,
                 "weather": weather_opt,
