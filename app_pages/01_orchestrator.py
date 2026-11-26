@@ -6,7 +6,6 @@ import pandas as pd
 import streamlit as st
 
 from utils.bootstrap import ensure_local_artifacts_bootstrapped
-from utils.config import AppConfig
 from utils.data_loaders import invalidate_all_caches
 from utils.pipeline_runner import (
     execute_complete_process,
@@ -360,14 +359,14 @@ elif active_panel == "Pipeline configuration":
                     "test_year": int(test_year),
                 }
             )
-            st.session_state["pipeline_config"] = AppConfig.from_dict(cfg_dict)
+            st.session_state["pipeline_config"] = type(config).from_dict(cfg_dict)
             invalidate_all_caches()
             append_log("Updated runtime configuration from UI.")
             st.success("Configuration saved.", title="Saved", icon=":material/check_circle:")
             st.rerun()
 
         if reset_btn:
-            st.session_state["pipeline_config"] = AppConfig()
+            st.session_state["pipeline_config"] = type(config)()
             invalidate_all_caches()
             append_log("Reset runtime configuration to defaults.")
             st.info("Defaults restored.", title="Reset", icon=":material/info:")

@@ -2,19 +2,59 @@
 
 from __future__ import annotations
 
+import importlib
 from datetime import datetime
 from pathlib import Path
 from typing import Any
 
 import streamlit as st
 
+import utils.config as _config_mod
 from utils.config import AppConfig
+
+
+def _current_app_config_cls() -> type[AppConfig]:
+    """Reload utils.config if edited on disk so hot-reloads never drop new AppConfig fields."""
+    if _config_mod.__file__:
+        cfg_path = Path(_config_mod.__file__)
+        if cfg_path.exists():
+            mtime = cfg_path.stat().st_mtime
+            if getattr(_config_mod, "_LOADED_MTIME", None) != mtime:
+                importlib.reload(_config_mod)
+                _config_mod._LOADED_MTIME = mtime
+    return _config_mod.AppConfig
+
+
+def _upgrade_config_instance(cfg: Any, config_cls: type[AppConfig]) -> AppConfig:
+    """Ensure an existing session_state AppConfig instance matches the latest dataclass schema."""
+    fields = config_cls.__dataclass_fields__
+    if isinstance(cfg, config_cls) and all(hasattr(cfg, f) for f in fields):
+        return cfg
+
+    if hasattr(cfg, "to_dict"):
+        try:
+            raw_dict = cfg.to_dict()
+        except Exception:
+            raw_dict = {}
+    else:
+        raw_dict = {}
+
+    for field_name in fields:
+        if field_name not in raw_dict and hasattr(cfg, field_name):
+            raw_dict[field_name] = getattr(cfg, field_name)
+
+    return config_cls.from_dict(raw_dict)
 
 
 def init_session_state() -> None:
     """Initialize all persistent st.session_state keys in one predictable place."""
+    config_cls = _current_app_config_cls()
     if "pipeline_config" not in st.session_state:
-        st.session_state["pipeline_config"] = AppConfig()
+        st.session_state["pipeline_config"] = config_cls()
+    else:
+        st.session_state["pipeline_config"] = _upgrade_config_instance(
+            st.session_state["pipeline_config"], config_cls
+        )
 
     if "pipeline_logs" not in st.session_state:
         st.session_state["pipeline_logs"] = []

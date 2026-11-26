@@ -37,6 +37,7 @@ def ensure_local_artifacts_bootstrapped(config: AppConfig) -> dict[str, Any] | N
             ):
                 results = execute_local_rebuild(
                     config=config,
+                    full_retrain=bool(getattr(config, "full_retrain", True)),
                     log_cb=lambda msg: append_log(msg, level="BOOTSTRAP"),
                 )
         except Exception as exc:

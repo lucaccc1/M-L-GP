@@ -33,6 +33,7 @@ class AppConfig:
     clf_l2_regularization: float = 5.0
     random_state: int = 42
     dnf_rank_penalty: float = 15.0
+    full_retrain: bool = True
 
     # Step 5: Monte Carlo simulation UI controls
     n_sims: int = 10000

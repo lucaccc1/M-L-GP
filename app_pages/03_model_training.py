@@ -8,12 +8,12 @@ import pandas as pd
 import streamlit as st
 
 import utils.charts as _charts_mod
+from utils.bootstrap import ensure_local_artifacts_bootstrapped
 from utils.charts import (
     feature_importance_chart,
     model_comparison_chart,
     pred_vs_actual_chart,
 )
-from utils.config import AppConfig
 from utils.data_loaders import (
     file_mtime,
     invalidate_all_caches,
@@ -30,7 +30,6 @@ if _charts_mod.__file__:
         model_comparison_chart = _charts_mod.model_comparison_chart
         pred_vs_actual_chart = _charts_mod.pred_vs_actual_chart
         feature_importance_chart = _charts_mod.feature_importance_chart
-from utils.bootstrap import ensure_local_artifacts_bootstrapped
 from utils.pipeline_runner import evaluate_existing_bundles, execute_training
 from utils.state import append_log, get_config, init_session_state, update_step_status
 
@@ -166,11 +165,18 @@ with st.form("model_training_form"):
     with st.expander(":material/menu_book: Parameter tuning guide", expanded=False):
         st.markdown(
             """
-            - **Temporal split (`Train end year` < `Validation year` < `Test year`)**: Keeps training strictly chronological. `Validation year` is also used to measure `Residual σ`, which drives Monte Carlo variance in the Race Simulator.
+            - **Temporal split (`Train end year` < `Validation year` < `Test year`)**: Keeps training strictly chronological. `Validation year` is also used to measure `Residual σ`, which drives Monte Carlo variance in the Race Simulator. With dynamic split the app auto-detects these years from the dataset.
             - **Position Regressor (`Reg max_iter`, `Reg lr`, `Reg max_depth`)**: Trained only on classified finishers (`is_dnf == 0`) to predict expected finishing position (`pred_pos`). Defaults: `300` / `0.030` / `3`.
             - **DNF Classifier (`DNF max_iter`, `DNF lr`, `DNF max_depth`, `DNF min_leaf`, `DNF L2 reg`)**: Trained on all starters to estimate retirement risk (`dnf_prob`). Defaults: `75` / `0.015` / `2` / `60` / `5.0`.
+            - **Train on 100% after validation (--full)**: After measuring accuracy on the validation split, retrain the final model on the complete dataset (all seasons). The `Residual σ` is still estimated from the validation split to keep calibration honest. Recommended for production / deployment.
             """
         )
+
+    full_retrain_toggle = st.toggle(
+        "Train on 100% of data after validation (--full)",
+        value=bool(getattr(config, "full_retrain", True)),
+        help="After evaluating on the validation split (to measure MAE, σ, AUC), retrain the final model bundle on all available seasons so it benefits from the most recent race patterns when predicting the next GP. Residual σ is always estimated from the validation split, keeping calibration honest.",
+    )
 
     train_submit = st.form_submit_button(
         "Train & evaluate models",
@@ -206,9 +212,10 @@ if train_submit:
                 "clf_max_depth": int(clf_depth),
                 "clf_min_samples_leaf": int(clf_min_samples_leaf),
                 "clf_l2_regularization": float(clf_l2_regularization),
+                "full_retrain": bool(full_retrain_toggle),
             }
         )
-        new_cfg = AppConfig.from_dict(cfg_dict)
+        new_cfg = type(config).from_dict(cfg_dict)
         st.session_state["pipeline_config"] = new_cfg
         config = new_cfg
 
@@ -224,6 +231,7 @@ if train_submit:
             try:
                 report = execute_training(
                     config=new_cfg,
+                    full_retrain=bool(getattr(new_cfg, "full_retrain", True)),
                     log_cb=_tlog,
                     progress_cb=_tprog,
                 )

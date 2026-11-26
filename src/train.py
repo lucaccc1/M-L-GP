@@ -1,6 +1,7 @@
 import pandas as pd
 import numpy as np
 import os
+import sys
 import joblib
 from sklearn.ensemble import HistGradientBoostingRegressor, HistGradientBoostingClassifier
 from sklearn.metrics import mean_absolute_error, roc_auc_score, brier_score_loss
@@ -10,9 +11,12 @@ def load_dataset(session_type="RAC"):
     return df[df["session_type"] == session_type].reset_index(drop=True)
 
 def split_data(df):
-    train = df[df["season_year"] <= 2024].reset_index(drop=True)
-    val = df[df["season_year"] == 2025].reset_index(drop=True)
-    test = df[df["season_year"] == 2026].reset_index(drop=True)
+    years = sorted(df["season_year"].unique())
+    test_year = years[-1] if len(years) >= 1 else None
+    val_year = years[-2] if len(years) >= 2 else test_year
+    train = df[df["season_year"] < val_year].reset_index(drop=True)
+    val = df[df["season_year"] == val_year].reset_index(drop=True)
+    test = df[df["season_year"] == test_year].reset_index(drop=True)
     return train, val, test
 
 def get_features_target(df, session_type):
@@ -29,13 +33,16 @@ def get_dnf_features(df):
     dnf_cols = ["grid_position", "is_front_row", "is_wet", "dnf_ratio_last5", "dnf_ratio_last10", "rider_avg_gain", "constructor_circuit_avg", "constructor_last5_avg", "circuit_dnf_rate", "clean_finish_streak", "fp_vs_grid_delta"]
     return df[dnf_cols], df["is_dnf"]
 
-def train_models(df_train, session_type):
+def train_models(df_train, session_type, reg_max_iter=300, reg_learning_rate=0.03,
+                 reg_max_depth=3, clf_max_iter=75, clf_learning_rate=0.015,
+                 clf_max_depth=2, clf_min_samples_leaf=60, clf_l2_regularization=5.0,
+                 random_state=42):
     train_fin = df_train[df_train["is_dnf"] == 0].reset_index(drop=True)
     X_fin, y_fin, _ = get_features_target(train_fin, session_type)
-    reg = HistGradientBoostingRegressor(max_iter=300, learning_rate=0.03, max_depth=3, random_state=42)
+    reg = HistGradientBoostingRegressor(max_iter=reg_max_iter, learning_rate=reg_learning_rate, max_depth=reg_max_depth, random_state=random_state)
     reg.fit(X_fin, y_fin)
     X_dnf, y_dnf = get_dnf_features(df_train)
-    clf = HistGradientBoostingClassifier(max_iter=75, learning_rate=0.015, max_depth=2, min_samples_leaf=60, l2_regularization=5.0, random_state=42)
+    clf = HistGradientBoostingClassifier(max_iter=clf_max_iter, learning_rate=clf_learning_rate, max_depth=clf_max_depth, min_samples_leaf=clf_min_samples_leaf, l2_regularization=clf_l2_regularization, random_state=random_state)
     clf.fit(X_dnf, y_dnf)
     return reg, clf
 
@@ -64,11 +71,16 @@ def save_bundle(reg, clf, std_dev, session_type):
     print(f"Bundle salvato in {path}")
 
 if __name__ == "__main__":
+    full_mode = "--full" in sys.argv
     for session_type in ["RAC", "SPR"]:
         print(f"\ntraining {session_type} model...")
         df = load_dataset(session_type)
         train, val, test = split_data(df)
+        years = sorted(df["season_year"].unique())
         reg, clf = train_models(train, session_type)
-        std_dev = evaluate(reg, clf, val, session_type, "Validation 2025")
-        evaluate(reg, clf, test, session_type, "Test 2026")
+        std_dev = evaluate(reg, clf, val, session_type, f"Validation {years[-2] if len(years) >= 2 else '?'}")
+        evaluate(reg, clf, test, session_type, f"Test {years[-1]}")
+        if full_mode:
+            print(f"[--full] Retraining {session_type} on 100% of data ({years[0]}–{years[-1]})...")
+            reg, clf = train_models(df, session_type)
         save_bundle(reg, clf, std_dev, session_type)

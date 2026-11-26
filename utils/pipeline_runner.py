@@ -12,10 +12,6 @@ from typing import Any
 
 import numpy as np
 import pandas as pd
-from sklearn.ensemble import (
-    HistGradientBoostingClassifier,
-    HistGradientBoostingRegressor,
-)
 from sklearn.inspection import permutation_importance
 from sklearn.metrics import brier_score_loss, mean_absolute_error, roc_auc_score
 
@@ -343,6 +339,7 @@ def _compute_importances(
 def execute_training(
     config: AppConfig,
     use_default_src_train: bool = True,
+    full_retrain: bool | None = None,
     log_cb: LogCallback | None = None,
     progress_cb: ProgressCallback | None = None,
 ) -> dict[str, Any]:
@@ -353,6 +350,12 @@ def execute_training(
             "Missing data/processed/dataset_ml.csv. Run Step 3 (src/features.py) first."
         )
 
+    effective_full_retrain = (
+        bool(getattr(config, "full_retrain", True))
+        if full_retrain is None
+        else bool(full_retrain)
+    )
+
     train_mod = _import_src_module("train")
     sessions_to_train = config.train_sessions or ["RAC", "SPR"]
     report: dict[str, Any] = {
@@ -361,19 +364,16 @@ def execute_training(
         "sessions": {},
     }
 
-    is_standard_defaults = (
-        use_default_src_train
-        and config.train_end_year == 2024
-        and config.val_year == 2025
-        and config.test_year == 2026
-        and config.reg_max_iter == 300
-        and config.reg_learning_rate == 0.03
-        and config.reg_max_depth == 3
-        and config.clf_max_iter == 75
-        and config.clf_learning_rate == 0.015
-        and config.clf_max_depth == 2
-        and config.clf_min_samples_leaf == 60
-        and config.clf_l2_regularization == 5.0
+    hyperparam_kwargs = dict(
+        reg_max_iter=config.reg_max_iter,
+        reg_learning_rate=config.reg_learning_rate,
+        reg_max_depth=config.reg_max_depth,
+        clf_max_iter=config.clf_max_iter,
+        clf_learning_rate=config.clf_learning_rate,
+        clf_max_depth=config.clf_max_depth,
+        clf_min_samples_leaf=config.clf_min_samples_leaf,
+        clf_l2_regularization=config.clf_l2_regularization,
+        random_state=config.random_state,
     )
 
     total = max(len(sessions_to_train), 1)
@@ -382,16 +382,14 @@ def execute_training(
         if progress_cb:
             progress_cb(base + 0.05, f"Loading {session_type} dataset via src.train...")
         df = train_mod.load_dataset(session_type)
-
-        if is_standard_defaults:
-            train_df, val_df, test_df = train_mod.split_data(df)
-        else:
-            train_df = df[df["season_year"] <= config.train_end_year].reset_index(drop=True)
-            val_df = df[df["season_year"] == config.val_year].reset_index(drop=True)
-            test_df = df[df["season_year"] == config.test_year].reset_index(drop=True)
+        train_df, val_df, test_df = train_mod.split_data(df)
 
         if train_df.empty:
             raise ValueError(f"Training split is empty for {session_type}.")
+
+        years = sorted(df["season_year"].unique())
+        val_year = years[-2] if len(years) >= 2 else years[-1]
+        test_year = years[-1]
 
         log(
             f"--- {session_type} split -> Train: {len(train_df):,} | Val: {len(val_df):,} | Test: {len(test_df):,} ---"
@@ -399,39 +397,14 @@ def execute_training(
         if progress_cb:
             progress_cb(base + 0.3 / total, f"Fitting {session_type} models...")
 
-        if is_standard_defaults:
-            reg, clf = train_mod.train_models(train_df, session_type)
-        else:
-            train_fin = train_df[train_df["is_dnf"] == 0].reset_index(drop=True)
-            X_fin, y_fin, _ = train_mod.get_features_target(train_fin, session_type)
-            reg = HistGradientBoostingRegressor(
-                max_iter=config.reg_max_iter,
-                learning_rate=config.reg_learning_rate,
-                max_depth=config.reg_max_depth,
-                random_state=config.random_state,
-            )
-            reg.fit(X_fin, y_fin)
-
-            if hasattr(train_mod, "get_dnf_features"):
-                X_dnf, y_dnf = train_mod.get_dnf_features(train_df)
-            else:
-                X_dnf, _, y_dnf = train_mod.get_features_target(train_df, session_type)
-            clf = HistGradientBoostingClassifier(
-                max_iter=config.clf_max_iter,
-                learning_rate=config.clf_learning_rate,
-                max_depth=config.clf_max_depth,
-                min_samples_leaf=config.clf_min_samples_leaf,
-                l2_regularization=config.clf_l2_regularization,
-                random_state=config.random_state,
-            )
-            clf.fit(X_dnf, y_dnf)
+        reg, clf = train_mod.train_models(train_df, session_type, **hyperparam_kwargs)
 
         val_metrics = _safe_evaluate_split(
             reg,
             clf,
             val_df,
             session_type,
-            f"Validation {config.val_year}",
+            f"Validation {val_year}",
             dnf_rank_penalty=config.dnf_rank_penalty,
             log_cb=log,
         )
@@ -440,7 +413,7 @@ def execute_training(
             clf,
             test_df,
             session_type,
-            f"Test {config.test_year}",
+            f"Test {test_year}",
             dnf_rank_penalty=config.dnf_rank_penalty,
             log_cb=log,
         )
@@ -450,6 +423,10 @@ def execute_training(
             train_fin = train_df[train_df["is_dnf"] == 0]
             X_tr, y_tr, _ = train_mod.get_features_target(train_fin, session_type)
             effective_std_dev = float(np.std(y_tr - reg.predict(X_tr)))
+
+        if effective_full_retrain:
+            log(f"[--full] Retraining {session_type} on 100% of data ({years[0]}–{years[-1]})...")
+            reg, clf = train_mod.train_models(df, session_type, **hyperparam_kwargs)
 
         train_mod.save_bundle(reg, clf, effective_std_dev, session_type)
         log(f"Bundle saved via src.train.save_bundle -> models/model_{session_type.lower()}.pkl")
@@ -462,6 +439,7 @@ def execute_training(
         report["sessions"][session_type] = {
             "bundle_path": str(config.model_bundle_path(session_type)),
             "train_rows": int(len(train_df)),
+            "full_retrain": effective_full_retrain,
             "val_metrics": val_metrics,
             "test_metrics": test_metrics,
             "effective_std_dev": round(float(effective_std_dev), 4),
@@ -498,15 +476,16 @@ def evaluate_existing_bundles(
         bundle = sim_mod.load_bundle(session_type)
         reg, clf, std_dev = bundle["reg"], bundle["clf"], float(bundle["std_dev"])
         df = train_mod.load_dataset(session_type)
-        train_df = df[df["season_year"] <= config.train_end_year].reset_index(drop=True)
-        val_df = df[df["season_year"] == config.val_year].reset_index(drop=True)
-        test_df = df[df["season_year"] == config.test_year].reset_index(drop=True)
+        train_df, val_df, test_df = train_mod.split_data(df)
+        years = sorted(df["season_year"].unique())
+        val_year = years[-2] if len(years) >= 2 else years[-1]
+        test_year = years[-1]
 
         val_metrics = _safe_evaluate_split(
-            reg, clf, val_df, session_type, f"Validation {config.val_year}", log_cb=log
+            reg, clf, val_df, session_type, f"Validation {val_year}", log_cb=log
         )
         test_metrics = _safe_evaluate_split(
-            reg, clf, test_df, session_type, f"Test {config.test_year}", log_cb=log
+            reg, clf, test_df, session_type, f"Test {test_year}", log_cb=log
         )
         imp_df = val_df if not val_df.empty else train_df
         importances = _compute_importances(reg, clf, imp_df, session_type)
@@ -544,6 +523,7 @@ def execute_complete_process(
     retrain: bool = False,
     raw_subprocess: bool = False,
     include_ingestion: bool = True,
+    full_retrain: bool | None = None,
     log_cb: LogCallback | None = None,
     step_cb: StepCallback | None = None,
 ) -> dict[str, Any]:
@@ -586,7 +566,7 @@ def execute_complete_process(
             (
                 "training",
                 "Step 4: src.train",
-                lambda: execute_training(config, log_cb=log),
+                lambda: execute_training(config, full_retrain=full_retrain, log_cb=log),
             )
         )
 
@@ -603,6 +583,7 @@ def execute_complete_process(
 
 def execute_local_rebuild(
     config: AppConfig,
+    full_retrain: bool | None = True,
     log_cb: LogCallback | None = None,
     step_cb: StepCallback | None = None,
 ) -> dict[str, Any]:
@@ -616,6 +597,7 @@ def execute_local_rebuild(
         retrain=True,
         raw_subprocess=False,
         include_ingestion=False,
+        full_retrain=full_retrain,
         log_cb=log_cb,
         step_cb=step_cb,
     )
