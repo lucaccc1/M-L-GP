@@ -31,7 +31,7 @@ st.set_page_config(
 )
 
 init_session_state()
-get_config()
+config = get_config()
 
 pages = [
     st.Page(
