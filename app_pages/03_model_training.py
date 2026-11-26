@@ -279,7 +279,18 @@ if not metrics_report or not metrics_report.get("sessions"):
     )
     st.stop()
 
-st.caption(f"Diagnostics timestamp: `{metrics_report.get('trained_at', 'N/A')[:19].replace('T', ' ')} UTC`")
+_mode_flags = [
+    s.get("full_retrain") for s in metrics_report.get("sessions", {}).values()
+]
+if _mode_flags and all(flag is True for flag in _mode_flags):
+    _mode_label = "Full 100% (`--full`)"
+elif _mode_flags and all(flag is False for flag in _mode_flags):
+    _mode_label = "Temporal split only"
+else:
+    _mode_label = "Legacy / mixed"
+st.caption(
+    f"Diagnostics timestamp: `{metrics_report.get('trained_at', 'N/A')[:19].replace('T', ' ')} UTC` · Bundle mode: {_mode_label}"
+)
 
 def _benchmark_delta_style(
     val_num: float | None,
