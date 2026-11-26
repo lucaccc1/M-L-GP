@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import threading
+from pathlib import Path
 from typing import Any
 
 import streamlit as st
@@ -60,3 +61,48 @@ def ensure_local_artifacts_bootstrapped(config: AppConfig) -> dict[str, Any] | N
             level="BOOTSTRAP",
         )
         return results
+
+
+def render_missing_dataset_notice(config: AppConfig) -> None:
+    """Display actionable status when dataset_ml.csv is missing (distinguishing missing data/raw/)."""
+    results_ok = config.results_csv.exists()
+    sessions_ok = config.sessions_csv.exists()
+
+    if not results_ok or not sessions_ok:
+        missing_raw = [
+            str(p)
+            for p, ok in (
+                (config.results_csv, results_ok),
+                (config.sessions_csv, sessions_ok),
+            )
+            if not ok
+        ]
+        st.warning(
+            f"Missing `{config.dataset_ml_csv}` and raw files `{'`, `'.join(missing_raw)}` "
+            f"(working dir: `{Path.cwd()}`). "
+            "Auto-bootstrap from `data/raw/` requires both `results.csv` and `sessions.csv` in the repository "
+            "(check they are committed on GitHub and not excluded by `.gitignore`), or run **Step 1 (`src/ingestion.py`)** in **Orchestrator**.",
+            title="ML dataset & raw CSVs unavailable",
+            icon=":material/warning:",
+        )
+        st.page_link(
+            "app_pages/01_orchestrator.py",
+            label="Open Pipeline orchestrator",
+            icon=":material/account_tree:",
+        )
+        return
+
+    st.warning(
+        f"Raw CSVs are present in `{config.raw_dir}`, but `{config.dataset_ml_csv}` has not been built yet.",
+        title="ML dataset unavailable",
+        icon=":material/warning:",
+    )
+    if st.button(
+        "Build dataset & models from data/raw/ now (Steps 2 → 3 → 4)",
+        type="primary",
+        icon=":material/build_circle:",
+        key="btn_manual_bootstrap_rebuild",
+    ):
+        ensure_local_artifacts_bootstrapped(config)
+        st.rerun()
+

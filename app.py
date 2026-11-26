@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import inspect
+import os
 import sys
 from pathlib import Path
 
@@ -11,6 +12,8 @@ import streamlit as st
 ROOT_DIR = Path(__file__).resolve().parent
 if str(ROOT_DIR) not in sys.path:
     sys.path.insert(0, str(ROOT_DIR))
+if Path.cwd().resolve() != ROOT_DIR:
+    os.chdir(ROOT_DIR)
 
 from utils.bootstrap import ensure_local_artifacts_bootstrapped  # noqa: E402
 from utils.state import get_config, init_session_state  # noqa: E402
@@ -28,7 +31,7 @@ st.set_page_config(
 )
 
 init_session_state()
-config = get_config()
+get_config()
 
 pages = [
     st.Page(

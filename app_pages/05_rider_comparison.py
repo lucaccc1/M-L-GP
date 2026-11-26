@@ -24,7 +24,10 @@ from utils.head_to_head import (
     get_rider_recent_history,
     run_h2h_simulation,
 )
-from utils.bootstrap import ensure_local_artifacts_bootstrapped
+from utils.bootstrap import (
+    ensure_local_artifacts_bootstrapped,
+    render_missing_dataset_notice,
+)
 from utils.pipeline_runner import safe_detect_weekend_state
 from utils.state import get_config, init_session_state
 from utils.upcoming_gp_ui import render_upcoming_gp_controls
@@ -42,11 +45,7 @@ ml_mtime = file_mtime(config.dataset_ml_csv)
 df_ml = load_csv_cached(str(config.dataset_ml_csv), ml_mtime)
 
 if df_ml.empty:
-    st.warning(
-        f"Missing `{config.dataset_ml_csv}`. Run Steps 1–3 in **Pipeline orchestrator** first.",
-        title="ML dataset unavailable",
-        icon=":material/warning:",
-    )
+    render_missing_dataset_notice(config)
     st.stop()
 
 if "date" in df_ml.columns:
@@ -144,49 +143,6 @@ rider_meta = {
     for _, row in sim_df.iterrows()
 }
 
-with st.container(key="h2h_card_styles"):
-    st.html(
-        """
-        <style>
-        .st-key-h2h_card_styles {
-            display: none !important;
-        }
-        .st-key-h2h_rider_a [data-testid="stWidgetLabel"] p,
-        .st-key-h2h_rider_b [data-testid="stWidgetLabel"] p {
-            font-size: 1.05rem !important;
-            font-weight: 600 !important;
-        }
-        .st-key-h2h_card_a {
-            background: linear-gradient(135deg, rgba(37, 99, 235, 0.22), rgba(37, 99, 235, 0.05)) !important;
-            border-color: rgba(59, 130, 246, 0.55) !important;
-        }
-        .st-key-h2h_card_b {
-            background: linear-gradient(135deg, rgba(217, 4, 41, 0.22), rgba(217, 4, 41, 0.05)) !important;
-            border-color: rgba(239, 68, 68, 0.55) !important;
-        }
-        .st-key-h2h_card_a h5,
-        .st-key-h2h_card_b h5 {
-            margin: 0 !important;
-            padding: 0 !important;
-            font-size: 1.15rem !important;
-            font-weight: 700 !important;
-            letter-spacing: 0.03em !important;
-        }
-        .st-key-h2h_card_a h2,
-        .st-key-h2h_card_b h2 {
-            margin: 0.1rem 0 0.25rem 0 !important;
-            padding: 0 !important;
-            font-size: 1.55rem !important;
-            font-weight: 700 !important;
-        }
-        .st-key-h2h_card_a [data-testid="stHeaderActionElements"],
-        .st-key-h2h_card_b [data-testid="stHeaderActionElements"] {
-            display: none !important;
-        }
-        </style>
-        """
-    )
-
 sel1, sel2 = st.columns(2)
 with sel1:
     rider_a = st.selectbox(
@@ -218,10 +174,36 @@ duel = compute_rider_pair_duel(sim_payload, rider_a, rider_b)
 row_a = sim_df[sim_df["rider_name"] == rider_a].iloc[0]
 row_b = sim_df[sim_df["rider_name"] == rider_b].iloc[0]
 
+with st.container(key="h2h_card_styles"):
+    st.html(
+        """
+        <style>
+        .st-key-h2h_card_styles {
+            display: none !important;
+        }
+        .st-key-h2h_card_a {
+            background: linear-gradient(135deg, rgba(37, 99, 235, 0.22), rgba(37, 99, 235, 0.05)) !important;
+            border-color: rgba(59, 130, 246, 0.55) !important;
+        }
+        .st-key-h2h_card_b {
+            background: linear-gradient(135deg, rgba(217, 4, 41, 0.22), rgba(217, 4, 41, 0.05)) !important;
+            border-color: rgba(239, 68, 68, 0.55) !important;
+        }
+        .st-key-h2h_card_a h2,
+        .st-key-h2h_card_b h2 {
+            margin: 0.1rem 0 0.25rem 0 !important;
+            padding: 0 !important;
+            font-size: 1.55rem !important;
+            font-weight: 700 !important;
+        }
+        </style>
+        """
+    )
+
 card_a, card_b = st.columns(2)
 with card_a:
     with st.container(border=True, key="h2h_card_a"):
-        st.markdown("##### :blue[:material/sports_motorsports: RIDER A]")
+        st.markdown(":blue[:material/sports_motorsports: RIDER A]")
         st.markdown(f"## {rider_a}")
         st.caption(
             f"{row_a['constructor_name']} · Grid P{int(row_a['grid_position'])} · Expected pos **{row_a['pred_pos']:.2f}**"
@@ -235,7 +217,7 @@ with card_a:
 
 with card_b:
     with st.container(border=True, key="h2h_card_b"):
-        st.markdown("##### :red[:material/sports_motorsports: RIDER B]")
+        st.markdown(":red[:material/sports_motorsports: RIDER B]")
         st.markdown(f"## {rider_b}")
         st.caption(
             f"{row_b['constructor_name']} · Grid P{int(row_b['grid_position'])} · Expected pos **{row_b['pred_pos']:.2f}**"

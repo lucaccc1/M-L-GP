@@ -18,7 +18,10 @@ from utils.data_loaders import (
     to_csv_bytes,
     to_excel_bytes,
 )
-from utils.bootstrap import ensure_local_artifacts_bootstrapped
+from utils.bootstrap import (
+    ensure_local_artifacts_bootstrapped,
+    render_missing_dataset_notice,
+)
 from utils.pipeline_runner import list_completed_events, safe_detect_weekend_state
 from utils.state import append_log, get_config, init_session_state, update_step_status
 from utils.upcoming_gp_ui import render_upcoming_gp_controls
@@ -36,11 +39,7 @@ ml_mtime = file_mtime(config.dataset_ml_csv)
 df_ml = load_csv_cached(str(config.dataset_ml_csv), ml_mtime)
 
 if df_ml.empty:
-    st.warning(
-        f"Missing `{config.dataset_ml_csv}`. Run Steps 1–3 in **Pipeline orchestrator** first.",
-        title="ML dataset unavailable",
-        icon=":material/warning:",
-    )
+    render_missing_dataset_notice(config)
     st.stop()
 
 # Ensure chronological ordering expected by src/simulation.py
