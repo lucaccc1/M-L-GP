@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+import importlib
+
 import pandas as pd
 import streamlit as st
 
+import utils.charts as _charts_mod
 from utils.charts import (
     feature_importance_chart,
     model_comparison_chart,
@@ -18,11 +21,22 @@ from utils.data_loaders import (
     to_csv_bytes,
     to_excel_bytes,
 )
+
+if _charts_mod.__file__:
+    _charts_mtime = file_mtime(_charts_mod.__file__)
+    if getattr(_charts_mod, "_LOADED_MTIME", None) != _charts_mtime:
+        importlib.reload(_charts_mod)
+        _charts_mod._LOADED_MTIME = _charts_mtime
+        model_comparison_chart = _charts_mod.model_comparison_chart
+        pred_vs_actual_chart = _charts_mod.pred_vs_actual_chart
+        feature_importance_chart = _charts_mod.feature_importance_chart
+from utils.bootstrap import ensure_local_artifacts_bootstrapped
 from utils.pipeline_runner import evaluate_existing_bundles, execute_training
 from utils.state import append_log, get_config, init_session_state, update_step_status
 
 init_session_state()
 config = get_config()
+ensure_local_artifacts_bootstrapped(config)
 
 st.title(":material/model_training: Model training & diagnostics")
 st.caption(
@@ -367,11 +381,18 @@ diag_view = st.segmented_control(
 )
 
 if diag_view == "Split comparison":
-    st.altair_chart(
-        model_comparison_chart(metrics_report),
-        width="stretch",
-        alt="Bar chart comparing MAE, DNF AUC, and Podium Hits across validation and test splits",
-    )
+    sc1, sc2, sc3 = st.columns(3)
+    for col, metric_key, alt_desc in [
+        (sc1, "MAE", "Grouped bar chart comparing finisher MAE across validation and test splits"),
+        (sc2, "DNF_AUC", "Grouped bar chart comparing DNF ROC-AUC across validation and test splits"),
+        (sc3, "Podium_Hits", "Grouped bar chart comparing podium hits across validation and test splits"),
+    ]:
+        with col:
+            st.altair_chart(
+                model_comparison_chart(metrics_report, metric=metric_key),
+                width="stretch",
+                alt=alt_desc,
+            )
 else:
     ctrl1, ctrl2 = st.columns(2)
     with ctrl1:

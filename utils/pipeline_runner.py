@@ -525,16 +525,31 @@ def evaluate_existing_bundles(
     return report
 
 
+def artifacts_need_bootstrap(config: AppConfig) -> bool:
+    """Return True when data/raw/ exists locally but dataset_ml.csv or trained .pkl bundles are missing."""
+    raw_ready = config.results_csv.exists() and config.sessions_csv.exists()
+    if not raw_ready:
+        return False
+    required_sessions = config.train_sessions or ["RAC", "SPR"]
+    missing_dataset = not config.dataset_ml_csv.exists()
+    missing_models = any(
+        not config.model_bundle_path(session_type).exists()
+        for session_type in required_sessions
+    )
+    return missing_dataset or missing_models
+
+
 def execute_complete_process(
     config: AppConfig,
     retrain: bool = False,
     raw_subprocess: bool = False,
+    include_ingestion: bool = True,
     log_cb: LogCallback | None = None,
     step_cb: StepCallback | None = None,
 ) -> dict[str, Any]:
     """Run full pipeline using either src/complete_process.py or step-by-step src modules."""
     log = log_cb or print
-    if raw_subprocess:
+    if raw_subprocess and include_ingestion:
         args = ["--retrain"] if retrain else []
         if step_cb:
             step_cb("complete_process", 1, 1, "Running src/complete_process.py...")
@@ -543,27 +558,67 @@ def execute_complete_process(
             evaluate_existing_bundles(config, log_cb=log)
         return {"mode": "src/complete_process.py", "retrain": retrain}
 
-    total = 4 if retrain else 3
-    results: dict[str, Any] = {}
-
-    if step_cb:
-        step_cb("ingestion", 1, total, "Step 1: src/ingestion.py")
-    results["ingestion"] = execute_ingestion(config, log_cb=log)
-
-    if step_cb:
-        step_cb("preprocessing", 2, total, "Step 2: src.preprocessing")
-    results["preprocessing"] = execute_preprocessing(config, log_cb=log)
-
-    if step_cb:
-        step_cb("features", 3, total, "Step 3: src.features")
-    results["features"] = execute_features(config, log_cb=log)
-
+    steps: list[tuple[str, str, Callable[[], dict[str, Any]]]] = []
+    if include_ingestion:
+        steps.append(
+            (
+                "ingestion",
+                "Step 1: src/ingestion.py",
+                lambda: execute_ingestion(config, log_cb=log),
+            )
+        )
+    steps.append(
+        (
+            "preprocessing",
+            "Step 2: src.preprocessing",
+            lambda: execute_preprocessing(config, log_cb=log),
+        )
+    )
+    steps.append(
+        (
+            "features",
+            "Step 3: src.features",
+            lambda: execute_features(config, log_cb=log),
+        )
+    )
     if retrain:
+        steps.append(
+            (
+                "training",
+                "Step 4: src.train",
+                lambda: execute_training(config, log_cb=log),
+            )
+        )
+
+    results: dict[str, Any] = {}
+    total = max(len(steps), 1)
+    for idx, (res_key, desc, fn) in enumerate(steps, start=1):
+        step_name = "train" if res_key == "training" else res_key
         if step_cb:
-            step_cb("train", 4, total, "Step 4: src.train")
-        results["training"] = execute_training(config, log_cb=log)
+            step_cb(step_name, idx, total, desc)
+        results[res_key] = fn()
 
     return results
+
+
+def execute_local_rebuild(
+    config: AppConfig,
+    log_cb: LogCallback | None = None,
+    step_cb: StepCallback | None = None,
+) -> dict[str, Any]:
+    """Rebuild processed dataset and models locally from data/raw/ (Steps 2 -> 3 -> 4, no API)."""
+    if not config.results_csv.exists() or not config.sessions_csv.exists():
+        raise FileNotFoundError(
+            "Missing data/raw/results.csv or data/raw/sessions.csv. Run Step 1 (src/ingestion.py) first."
+        )
+    return execute_complete_process(
+        config=config,
+        retrain=True,
+        raw_subprocess=False,
+        include_ingestion=False,
+        log_cb=log_cb,
+        step_cb=step_cb,
+    )
 
 
 def safe_detect_weekend_state(

@@ -18,12 +18,14 @@ from utils.data_loaders import (
     to_csv_bytes,
     to_excel_bytes,
 )
+from utils.bootstrap import ensure_local_artifacts_bootstrapped
 from utils.pipeline_runner import list_completed_events, safe_detect_weekend_state
 from utils.state import append_log, get_config, init_session_state, update_step_status
 from utils.upcoming_gp_ui import render_upcoming_gp_controls
 
 init_session_state()
 config = get_config()
+ensure_local_artifacts_bootstrapped(config)
 
 st.title(":material/flag: Race simulator & backtest")
 st.caption(

@@ -5,12 +5,14 @@ from __future__ import annotations
 import pandas as pd
 import streamlit as st
 
+from utils.bootstrap import ensure_local_artifacts_bootstrapped
 from utils.config import AppConfig
 from utils.data_loaders import invalidate_all_caches
 from utils.pipeline_runner import (
     execute_complete_process,
     execute_features,
     execute_ingestion,
+    execute_local_rebuild,
     execute_preprocessing,
     execute_training,
 )
@@ -25,6 +27,7 @@ from utils.state import (
 
 init_session_state()
 config = get_config()
+ensure_local_artifacts_bootstrapped(config)
 inventory = get_artifact_inventory(config)
 
 st.title(":material/account_tree: Pipeline orchestrator")
@@ -113,11 +116,51 @@ def _execute_step(step_key: str, label: str, fn) -> None:
             st.error(f"{exc}", title=f"{label} failed", icon=":material/error:")
 
 
+def _run_multi_step_pipeline(
+    runner_fn,
+    start_text: str,
+    status_label: str,
+    complete_label: str,
+    fail_label: str,
+    success_msg: str,
+    success_title: str,
+) -> None:
+    """Execute a multi-step pipeline sequence with live progress, status box, and logs."""
+    progress = st.progress(0.0, text=start_text)
+    with st.status(status_label, expanded=True) as status_box:
+        def _log(msg: str) -> None:
+            append_log(msg, level="PIPELINE")
+            st.write(msg)
+
+        def _step(step_name: str, idx: int, n_total: int, desc: str) -> None:
+            progress.progress((idx - 1) / max(n_total, 1), text=desc)
+            update_step_status(step_name, "running")
+
+        try:
+            summary = runner_fn(_log, _step)
+            for k, v in summary.items():
+                if isinstance(v, dict):
+                    mapped = "train" if k == "training" else k
+                    update_step_status(mapped, "success", v)
+            invalidate_all_caches()
+            progress.progress(1.0, text=f"{complete_label}.")
+            status_box.update(label=complete_label, state="complete", expanded=False)
+            st.success(
+                success_msg,
+                title=success_title,
+                icon=":material/check_circle:",
+            )
+        except Exception as exc:
+            append_log(f"Pipeline halted: {exc}", level="ERROR")
+            status_box.update(label=fail_label, state="error", expanded=True)
+            st.error(f"{exc}", title="Pipeline execution error", icon=":material/error:")
+
+
 if active_panel == "Execution controls":
     with st.container(border=True):
         st.subheader(":material/play_circle: End-to-end automation")
 
-        e2e_c1, e2e_c2, e2e_c3 = st.columns([1.4, 1.4, 1], vertical_alignment="bottom")
+        e2e_c1, e2e_c2, e2e_c3 = st.columns([1.1, 1.1, 1], vertical_alignment="bottom")
         with e2e_c1:
             retrain_toggle = st.toggle(
                 "Retrain RAC & SPR models (--retrain)",
@@ -136,50 +179,61 @@ if active_panel == "Execution controls":
                 type="primary",
                 icon=":material/rocket_launch:",
                 width="stretch",
+                wrap=False,
                 key="btn_run_e2e",
             )
 
         if run_e2e:
-            e2e_progress = st.progress(0.0, text="Starting complete pipeline...")
-            with st.status("Executing end-to-end MotoGP pipeline...", expanded=True) as status_box:
-                def _e2e_log(msg: str) -> None:
-                    append_log(msg, level="PIPELINE")
-                    st.write(msg)
+            _run_multi_step_pipeline(
+                runner_fn=lambda log_cb, step_cb: execute_complete_process(
+                    config=config,
+                    retrain=retrain_toggle,
+                    raw_subprocess=raw_subproc_toggle,
+                    log_cb=log_cb,
+                    step_cb=step_cb,
+                ),
+                start_text="Starting complete pipeline...",
+                status_label="Executing end-to-end MotoGP pipeline...",
+                complete_label="End-to-end pipeline completed",
+                fail_label="End-to-end pipeline failed",
+                success_msg="Complete pipeline finished cleanly.",
+                success_title="Pipeline complete",
+            )
 
-                def _e2e_step(step_name: str, idx: int, n_total: int, desc: str) -> None:
-                    e2e_progress.progress((idx - 1) / max(n_total, 1), text=desc)
-                    update_step_status(step_name, "running")
+    with st.container(border=True):
+        st.subheader(":material/bolt: Local rebuild from data/raw/ (no API)")
+        loc_c1, loc_c2 = st.columns([2.25, 1], vertical_alignment="bottom")
+        with loc_c1:
+            st.caption(
+                "Rebuilds `cleaned_sessions.csv`, `dataset_ml.csv`, and trained `RAC` / `SPR` models directly from local `data/raw/` CSVs (Steps 2 → 3 → 4) with zero API calls."
+            )
+        with loc_c2:
+            run_local_rebuild = st.button(
+                "Rebuild without new API calls (Step 2 → 3 → 4)",
+                type="primary",
+                icon=":material/build_circle:",
+                width="stretch",
+                wrap=False,
+                disabled=not raw_ready,
+                key="btn_local_rebuild",
+            )
+        if not raw_ready:
+            st.caption("Requires `data/raw/results.csv` and `sessions.csv` from Step 1.")
 
-                try:
-                    summary = execute_complete_process(
-                        config=config,
-                        retrain=retrain_toggle,
-                        raw_subprocess=raw_subproc_toggle,
-                        log_cb=_e2e_log,
-                        step_cb=_e2e_step,
-                    )
-                    for k, v in summary.items():
-                        if isinstance(v, dict):
-                            mapped = "train" if k == "training" else k
-                            update_step_status(mapped, "success", v)
-                    invalidate_all_caches()
-                    e2e_progress.progress(1.0, text="Full pipeline completed.")
-                    status_box.update(
-                        label="End-to-end pipeline completed",
-                        state="complete",
-                        expanded=False,
-                    )
-                    st.success(
-                        "Complete pipeline finished cleanly.",
-                        title="Pipeline complete",
-                        icon=":material/check_circle:",
-                    )
-                except Exception as exc:
-                    append_log(f"Pipeline halted: {exc}", level="ERROR")
-                    status_box.update(
-                        label="End-to-end pipeline failed", state="error", expanded=True
-                    )
-                    st.error(f"{exc}", title="Pipeline execution error", icon=":material/error:")
+        if run_local_rebuild:
+            _run_multi_step_pipeline(
+                runner_fn=lambda log_cb, step_cb: execute_local_rebuild(
+                    config=config,
+                    log_cb=log_cb,
+                    step_cb=step_cb,
+                ),
+                start_text="Starting local rebuild (Steps 2 → 3 → 4)...",
+                status_label="Rebuilding dataset and models from data/raw/...",
+                complete_label="Local rebuild completed",
+                fail_label="Local rebuild failed",
+                success_msg="Local rebuild (Steps 2 → 3 → 4) finished cleanly without API calls.",
+                success_title="Rebuild complete",
+            )
 
     st.subheader(":material/tune: Granular step execution")
     c1, c2 = st.columns(2)

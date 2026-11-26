@@ -12,6 +12,7 @@ ROOT_DIR = Path(__file__).resolve().parent
 if str(ROOT_DIR) not in sys.path:
     sys.path.insert(0, str(ROOT_DIR))
 
+from utils.bootstrap import ensure_local_artifacts_bootstrapped  # noqa: E402
 from utils.state import get_config, init_session_state  # noqa: E402
 
 st.set_page_config(
@@ -27,7 +28,7 @@ st.set_page_config(
 )
 
 init_session_state()
-get_config()
+config = get_config()
 
 pages = [
     st.Page(
@@ -190,4 +191,5 @@ with st.container(**_shell_kwargs):
         with st.container(key=f"nav_pill_{idx}_{state_suffix}", **_item_container_kwargs):
             st.page_link(page, **_page_link_kwargs)
 
+ensure_local_artifacts_bootstrapped(config)
 active_page.run()

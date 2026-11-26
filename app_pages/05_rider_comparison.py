@@ -24,12 +24,14 @@ from utils.head_to_head import (
     get_rider_recent_history,
     run_h2h_simulation,
 )
+from utils.bootstrap import ensure_local_artifacts_bootstrapped
 from utils.pipeline_runner import safe_detect_weekend_state
 from utils.state import get_config, init_session_state
 from utils.upcoming_gp_ui import render_upcoming_gp_controls
 
 init_session_state()
 config = get_config()
+ensure_local_artifacts_bootstrapped(config)
 
 st.title(":material/compare_arrows: Rider head-to-head")
 st.caption(

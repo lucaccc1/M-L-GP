@@ -185,8 +185,49 @@ def grid_vs_finish_chart(df: pd.DataFrame) -> alt.Chart:
     return chart
 
 
-def model_comparison_chart(metrics_report: dict) -> alt.Chart:
-    """Grouped bar chart comparing MAE and DNF AUC across sessions and splits."""
+_METRIC_SPECS: dict[str, dict[str, object]] = {
+    "MAE": {
+        "title": "MAE (finishers · lower is better)",
+        "y_title": "Mean Absolute Error (pos)",
+        "format": ".2f",
+        "domain": None,
+    },
+    "DNF_AUC": {
+        "title": "DNF ROC-AUC (higher is better)",
+        "y_title": "ROC-AUC",
+        "format": ".3f",
+        "domain": [0.0, 1.0],
+    },
+    "Podium_Hits": {
+        "title": "Podium hits (out of 3 · higher is better)",
+        "y_title": "Avg podium hits / 3",
+        "format": ".2f",
+        "domain": [0.0, 3.0],
+    },
+}
+
+
+def _is_dark_theme(theme_type: str | None = None) -> bool:
+    if theme_type is None:
+        try:
+            import streamlit as st
+
+            theme_type = getattr(getattr(st.context, "theme", None), "type", "dark")
+        except Exception:
+            theme_type = "dark"
+    return str(theme_type).lower() != "light"
+
+
+def _resolve_label_color(theme_type: str | None = None) -> str:
+    return "#F3F4F6" if _is_dark_theme(theme_type) else "#0F172A"
+
+
+def model_comparison_chart(
+    metrics_report: dict,
+    metric: str | None = None,
+    theme_type: str | None = None,
+) -> alt.Chart:
+    """Grouped bar chart comparing MAE, DNF AUC, and Podium Hits across sessions and splits."""
     rows = []
     for session_type, sdata in metrics_report.get("sessions", {}).items():
         for split_key, split_label in [
@@ -210,35 +251,63 @@ def model_comparison_chart(metrics_report: dict) -> alt.Chart:
     if df_m.empty:
         return alt.Chart(pd.DataFrame({"x": [], "y": []})).mark_bar()
 
-    melted = df_m.melt(
-        id_vars=["session", "split"],
-        value_vars=["MAE", "DNF_AUC", "Podium_Hits"],
-        var_name="metric",
-        value_name="value",
+    if metric is None:
+        panels = [
+            model_comparison_chart(metrics_report, metric=key, theme_type=theme_type)
+            for key in _METRIC_SPECS
+        ]
+        return alt.hconcat(*panels, spacing=24)
+
+    spec = _METRIC_SPECS[metric]
+    sub = df_m[["session", "split", metric]].rename(columns={metric: "value"}).copy()
+    sub["metric_label"] = spec["title"]
+    label_color = _resolve_label_color(theme_type)
+
+    if spec["domain"] is not None:
+        y_scale = alt.Scale(domain=spec["domain"])
+    else:
+        max_val = float(sub["value"].max()) if not sub.empty else 1.0
+        y_scale = alt.Scale(domain=[0.0, max(max_val * 1.15, 0.5)], nice=True)
+    session_order = [s for s in ["RAC", "SPR"] if s in sub["session"].unique()] or sorted(
+        sub["session"].unique().tolist()
     )
-    chart = (
-        alt.Chart(melted)
-        .mark_bar(cornerRadiusTopLeft=4, cornerRadiusTopRight=4)
-        .encode(
-            x=alt.X("split:N", title="Evaluation split"),
-            y=alt.Y("value:Q", title="Metric value"),
-            color=alt.Color(
-                "session:N",
-                title="Session",
-                scale=alt.Scale(range=["#D90429", "#1D4ED8"]),
-            ),
-            xOffset="session:N",
-            column=alt.Column("metric:N", title=None),
-            tooltip=[
-                alt.Tooltip("metric:N", title="Metric"),
-                alt.Tooltip("session:N", title="Session"),
-                alt.Tooltip("split:N", title="Split"),
-                alt.Tooltip("value:Q", title="Value", format=".3f"),
-            ],
-        )
-        .properties(height=260, width=180)
+    fmt = str(spec["format"])
+
+    base = alt.Chart(sub).encode(
+        x=alt.X(
+            "split:N",
+            sort=["Validation", "Test"],
+            title=None,
+            axis=alt.Axis(labelAngle=0),
+        ),
+        y=alt.Y("value:Q", title=str(spec["y_title"]), scale=y_scale),
+        xOffset=alt.XOffset("session:N", sort=session_order),
+        color=alt.Color(
+            "session:N",
+            title="Session",
+            sort=session_order,
+            scale=alt.Scale(domain=["RAC", "SPR"], range=["#D90429", "#1D4ED8"]),
+            legend=alt.Legend(orient="top"),
+        ),
     )
-    return chart
+    bars = base.mark_bar(cornerRadiusTopLeft=5, cornerRadiusTopRight=5).encode(
+        tooltip=[
+            alt.Tooltip("metric_label:N", title="Metric"),
+            alt.Tooltip("session:N", title="Session"),
+            alt.Tooltip("split:N", title="Split"),
+            alt.Tooltip("value:Q", title="Value", format=fmt),
+        ]
+    )
+    labels = base.mark_text(
+        dy=-8,
+        fontSize=12,
+        fontWeight="bold",
+        color=label_color,
+    ).encode(
+        text=alt.Text("value:Q", format=fmt),
+        color=alt.value(label_color),
+    )
+    return (bars + labels).properties(height=440, title=str(spec["title"]))
 
 
 def pred_vs_actual_chart(predictions: list[dict]) -> alt.Chart:
@@ -371,15 +440,7 @@ def pace_vs_crash_risk_chart(
     sim_df: pd.DataFrame, theme_type: str | None = None
 ) -> alt.Chart:
     """Scatter chart plotting expected finishing position against DNF risk."""
-    if theme_type is None:
-        try:
-            import streamlit as st
-
-            theme_type = getattr(getattr(st.context, "theme", None), "type", "dark")
-        except Exception:
-            theme_type = "dark"
-
-    is_dark = str(theme_type).lower() != "light"
+    is_dark = _is_dark_theme(theme_type)
     label_color = "#F3F4F6" if is_dark else "#0F172A"
     point_stroke = "#0E1117" if is_dark else "#FFFFFF"
 

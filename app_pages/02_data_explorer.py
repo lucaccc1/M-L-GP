@@ -16,10 +16,12 @@ from utils.data_loaders import (
     to_csv_bytes,
     to_excel_bytes,
 )
+from utils.bootstrap import ensure_local_artifacts_bootstrapped
 from utils.state import get_config, init_session_state
 
 init_session_state()
 config = get_config()
+ensure_local_artifacts_bootstrapped(config)
 
 st.title(":material/analytics: Data & feature explorer")
 st.caption(
