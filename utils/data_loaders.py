@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import importlib
 import io
 import json
 from pathlib import Path
+from types import ModuleType
 from typing import Any
 
 import joblib
@@ -15,6 +17,18 @@ import streamlit as st
 def file_mtime(path: str | Path) -> float:
     p = Path(path)
     return p.stat().st_mtime if p.exists() else -1.0
+
+
+def reload_module_if_changed(module: ModuleType) -> ModuleType:
+    """Reload a Python module in-place if its source file mtime changed on disk."""
+    mod_file = getattr(module, "__file__", None)
+    if not mod_file:
+        return module
+    mtime = file_mtime(mod_file)
+    if mtime >= 0 and getattr(module, "_LOADED_MTIME", None) != mtime:
+        importlib.reload(module)
+        module._LOADED_MTIME = mtime  # type: ignore[attr-defined]
+    return module
 
 
 @st.cache_data(ttl=3600, max_entries=16, show_spinner=False)

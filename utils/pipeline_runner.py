@@ -27,10 +27,12 @@ if str(PROJECT_ROOT) not in sys.path:
 
 
 def _import_src_module(name: str):
-    """Import a module from the user's src/ folder dynamically."""
+    """Import a module from the user's src/ folder dynamically, reloading if edited on disk."""
     import importlib
+    from utils.data_loaders import reload_module_if_changed
 
-    return importlib.import_module(f"src.{name}")
+    mod = importlib.import_module(f"src.{name}")
+    return reload_module_if_changed(mod)
 
 
 def run_script_subprocess(

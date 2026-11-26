@@ -6,23 +6,25 @@ import pandas as pd
 import streamlit as st
 
 from utils.bootstrap import ensure_local_artifacts_bootstrapped
-from utils.data_loaders import invalidate_all_caches
-from utils.pipeline_runner import (
-    execute_complete_process,
-    execute_features,
-    execute_ingestion,
-    execute_local_rebuild,
-    execute_preprocessing,
-    execute_training,
-)
-from utils.state import (
-    append_log,
-    clear_logs,
-    get_artifact_inventory,
-    get_config,
-    init_session_state,
-    update_step_status,
-)
+from utils.data_loaders import invalidate_all_caches, reload_module_if_changed
+import utils.pipeline_runner as _runner_mod
+import utils.state as _state_mod
+
+reload_module_if_changed(_runner_mod)
+reload_module_if_changed(_state_mod)
+
+execute_complete_process = _runner_mod.execute_complete_process
+execute_features = _runner_mod.execute_features
+execute_ingestion = _runner_mod.execute_ingestion
+execute_local_rebuild = _runner_mod.execute_local_rebuild
+execute_preprocessing = _runner_mod.execute_preprocessing
+execute_training = _runner_mod.execute_training
+append_log = _state_mod.append_log
+clear_logs = _state_mod.clear_logs
+get_artifact_inventory = _state_mod.get_artifact_inventory
+get_config = _state_mod.get_config
+init_session_state = _state_mod.init_session_state
+update_step_status = _state_mod.update_step_status
 
 init_session_state()
 config = get_config()

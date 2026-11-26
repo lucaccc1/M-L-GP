@@ -2,36 +2,35 @@
 
 from __future__ import annotations
 
-import importlib
-
 import pandas as pd
 import streamlit as st
 
 import utils.charts as _charts_mod
+import utils.pipeline_runner as _runner_mod
+import utils.state as _state_mod
 from utils.bootstrap import ensure_local_artifacts_bootstrapped
-from utils.charts import (
-    feature_importance_chart,
-    model_comparison_chart,
-    pred_vs_actual_chart,
-)
 from utils.data_loaders import (
     file_mtime,
     invalidate_all_caches,
     load_json_cached,
+    reload_module_if_changed,
     to_csv_bytes,
     to_excel_bytes,
 )
 
-if _charts_mod.__file__:
-    _charts_mtime = file_mtime(_charts_mod.__file__)
-    if getattr(_charts_mod, "_LOADED_MTIME", None) != _charts_mtime:
-        importlib.reload(_charts_mod)
-        _charts_mod._LOADED_MTIME = _charts_mtime
-        model_comparison_chart = _charts_mod.model_comparison_chart
-        pred_vs_actual_chart = _charts_mod.pred_vs_actual_chart
-        feature_importance_chart = _charts_mod.feature_importance_chart
-from utils.pipeline_runner import evaluate_existing_bundles, execute_training
-from utils.state import append_log, get_config, init_session_state, update_step_status
+reload_module_if_changed(_charts_mod)
+reload_module_if_changed(_runner_mod)
+reload_module_if_changed(_state_mod)
+
+model_comparison_chart = _charts_mod.model_comparison_chart
+pred_vs_actual_chart = _charts_mod.pred_vs_actual_chart
+feature_importance_chart = _charts_mod.feature_importance_chart
+evaluate_existing_bundles = _runner_mod.evaluate_existing_bundles
+execute_training = _runner_mod.execute_training
+append_log = _state_mod.append_log
+get_config = _state_mod.get_config
+init_session_state = _state_mod.init_session_state
+update_step_status = _state_mod.update_step_status
 
 init_session_state()
 config = get_config()
